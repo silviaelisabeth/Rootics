@@ -1899,6 +1899,8 @@ class phPage(QWizardPage):
         self.ls_page.remove('ph')
         if len(self.ls_page) != 0 and 'h2s' in self.field('parameter selected'):
             return wizard_page_index["h2sPage"]
+        elif len(self.ls_page) != 0 and 'ep' in self.field('parameter selected'):
+            return wizard_page_index["epPage"]
         else:
             return wizard_page_index["charPage"]
 
@@ -3348,6 +3350,79 @@ class epPage(QWizardPage):
     def __init__(self, parent=None):
         super(epPage, self).__init__(parent)
         self.setTitle("EP depth profile")
+        self.setSubTitle("Press PLOT to start.")
+
+        self.initUI()
+
+        # connect checkbox and load file button with a function
+
+    def initUI(self):
+        # user option to consider drift correction
+        self.driftEP_box = QCheckBox('Include drift correction', self)
+        self.driftEP_box.setFont(QFont('Helvetica Neue', int(fs_font*1.15)))
+
+        # Action button
+        self.saveEP_button = QPushButton('Save', self)
+        self.saveEP_button.setFixedWidth(100), self.saveEP_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.continueEP_button = QPushButton('Plot', self)
+        self.continueEP_button.setFixedWidth(100), self.continueEP_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.adjustEP_button = QPushButton('Adjustments', self)
+        self.adjustEP_button.setFixedWidth(100), self.adjustEP_button.setEnabled(False)
+        self.adjustEP_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.resetEP_button = QPushButton('Reset', self)
+        self.resetEP_button.setFixedWidth(100), self.resetEP_button.setFont(QFont('Helvetica Neue', fs_font))
+
+        # Slider for different cores and label on the right
+        self.sliderEP = QSlider(Qt.Horizontal)
+        self.sliderEP.setMinimumWidth(350), self.sliderEP.setFixedHeight(20)
+        self.sldEP_label = QLabel()
+        self.sldEP_label.setFixedWidth(50), self.sldEP_label.setText('core: --')
+
+        # creating window layout
+        w2 = QWidget(self)
+        mlayout2 = QVBoxLayout(w2)
+        vbox1_top, vbox1_middle, vbox1_bottom = QHBoxLayout(), QHBoxLayout(), QVBoxLayout()
+        mlayout2.addLayout(vbox1_top), mlayout2.addLayout(vbox1_middle), mlayout2.addLayout(vbox1_bottom)
+
+        swiarea = QGroupBox("Navigation panel")
+        swiarea.setMinimumHeight(100)
+        grid_swi = QGridLayout()
+        swiarea.setFont(QFont('Helvetica Neue', fs_font))
+        vbox1_top.addWidget(swiarea)
+        swiarea.setLayout(grid_swi)
+
+        # include widgets in the layout
+        grid_swi.addWidget(self.driftEP_box, 0, 0)
+        grid_swi.addWidget(self.continueEP_button, 1, 0)
+        grid_swi.addWidget(self.adjustEP_button, 1, 1)
+        grid_swi.addWidget(self.resetEP_button, 1, 2)
+        grid_swi.addWidget(self.saveEP_button, 1, 3)
+
+        # draw additional "line" to separate parameters from plots and to separate navigation from rest
+        vline = QFrame()
+        vline.setFrameShape(QFrame.HLine | QFrame.Raised)
+        vline.setLineWidth(2)
+        vbox1_middle.addWidget(vline)
+
+        # plotting area
+        self.figEP, self.axEP = plt.subplots(figsize=(5, 3))
+        self.canvasEP = FigureCanvasQTAgg(self.figEP)
+        self.axEP.set_xlabel('EP (mV)'), self.axEP.set_ylabel('Depth / µm')
+        self.axEP.invert_yaxis()
+        self.figEP.tight_layout(pad=1.5)
+        sns.despine()
+
+        ep_group = QGroupBox("EP depth profile")
+        ep_group.setMinimumWidth(350), ep_group.setMinimumHeight(400)
+        grid_ep = QGridLayout()
+
+        # add GroupBox to layout and load buttons in GroupBox
+        vbox1_bottom.addWidget(ep_group)
+        ep_group.setLayout(grid_ep)
+        grid_ep.addWidget(self.sliderEP, 1, 0)
+        grid_ep.addWidget(self.sldEP_label, 1, 1)
+        grid_ep.addWidget(self.canvasEP, 2, 0)
+        self.setLayout(mlayout2)
 
     def nextId(self) -> int:
         return wizard_page_index["charPage"]
