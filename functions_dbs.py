@@ -388,13 +388,17 @@ def load_measurements(dsheets, ls_core, para):
             # identify the depth column
             col_ = [c for c in dsheets.loc[n].columns if 'Depth' in c]
             ls_name = ['Core']
-            if 'O2' in para:
-                [ls_name.append(i) for i in dsheets.loc[n].columns if para.split('_')[0] in i and 'M' in i]
-                [ls_name.append(i) for i in dsheets.loc[n].columns if para.split('_')[0] in i and '_mV' in i]
+            if 'O2' in para or 'o2' in para:
+                [ls_name.append(i) for i in dsheets.loc[n].columns if 'O2' in i and 'M' in i]
+                [ls_name.append(i) for i in dsheets.loc[n].columns if 'O2' in i and '_mV' in i]
                 df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
                 dcore[n] = df[df['Core'] == core]
-            elif 'H2S' in para:
-                [ls_name.append(i) for i in dsheets.loc[n].columns if para.split('_')[0] in i and 'M' in i]
+            elif 'H2S' in para or 'h2s' in para:
+                [ls_name.append(i) for i in dsheets.loc[n].columns if 'H2S' in i and 'M' in i]
+                df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
+                dcore[n] = df[df['Core'] == core]
+            elif 'EP' in para or 'Ep' in para or 'ep' in para:
+                [ls_name.append(i) for i in dsheets.loc[n].columns if 'EP' in i and '_mV' in i]
                 df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
                 dcore[n] = df[df['Core'] == core]
             else:
@@ -874,6 +878,8 @@ def sheetname_check(dsheets, para='O2'):
         [ls.append(i) for i in list(dsheets.keys()) if 'pH' in i]
     elif para == 'H2S':
         [ls.append(i) for i in list(dsheets.keys()) if 'H2S' in i]
+    elif para == 'EP':
+        [ls.append(i) for i in list(dsheets.keys()) if 'EP' in i or 'ep' in i or 'Ep' in i]
 
     for l in ls:
         if 'all' in l:

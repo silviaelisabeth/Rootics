@@ -27,7 +27,6 @@ import pandas as pd
 from lmfit import Model
 import os
 import re
-from waiting import wait
 
 import functions_dbs as dbs
 import function_salinity as sal
@@ -50,7 +49,7 @@ sns.set_context('paper'), sns.set_style('ticks')
 
 # global variables
 dobj_hid, dpen_glob, dO2_core, results, dout = dict(), dict(), dict(), dict(), dict()
-scalepH, scaleh2s = list(), list()
+scalepH, scaleh2s, scaleEP = list(), list(), list()
 
 # wizard architecture - how are the pages arranged?
 wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "epPage": 4, "charPage": 5}
@@ -62,7 +61,7 @@ wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "ep
 # !!! TODO: write the guideline - update the subtitle accordingly and avoid the "black box" image
 # !!! TODO: all plot with maximal lim
 # !!! TODO: make the layout / fontsize of text, buttons,... all the same
-
+# !!! TODO: combine similar functions / plots of different projects
 
 class QIComboBox(QComboBox):
     def __init__(self):
@@ -1880,7 +1879,6 @@ class phPage(QWizardPage):
 
         # clear pH range (scale), SWI correction
         self.swi_edit.setText('--')
-        self.sldpH_label.setText('core: --')
         self.swipH_box.setVisible(True), self.swipH_box.setEnabled(False)
         self.swipH_box.setCheckState(False)
 
@@ -2857,10 +2855,9 @@ class AdjustpHWindowS(QDialog):
             pH_sample = None
         else:
             pH_sample = self.df_correl[self.df_correl['H2S Nr'] == h2s_nr]['pH Nr'].to_numpy()[0]
-        print(2858, pH_sample)
+
         # get pH data and in case apply depth correction in case it was done for H2S / total sulfide
         self.pH_data = results['pH raw data'] if 'pH raw data' in results.keys() else None
-        print(2856, 'pH raw data' in results.keys())
         if self.pH_data:
             self.swi_correctionpHII()
         fig, self.ax1 = plot_adjustH2S(core=self.Core, sample=h2s_nr, col=self.colH2S, dfCore=self.dic_H2S[self.Core],
@@ -3019,8 +3016,7 @@ class AdjustpHWindowS(QDialog):
             pH_sample = None
         else:
             pH_sample = self.df_correl[self.df_correl['H2S Nr'] == sample_select]['pH Nr'].to_numpy()[0]
-        # pH_sample = self.df_correl[self.df_correl['H2S Nr'] == sample_select]['pH Nr'].to_numpy()[0] if self.df_correl else None
-        print(3012, pH_sample)
+
         pH_data = results['pH raw data'] if 'pH raw data' in results.keys() else None
         fig, self.ax1 = plot_adjustH2S(core=self.Core, sample=sample_select, dfCore=self.dic_H2S[self.Core],
                                        scale=self.scale, fig=self.figH2Ss, ax=self.axH2Ss, col=self.colH2S,
@@ -3352,14 +3348,34 @@ class epPage(QWizardPage):
         self.setTitle("EP depth profile")
         self.setSubTitle("Press PLOT to start.")
 
+        self.status_EP = 0
         self.initUI()
 
         # connect checkbox and load file button with a function
+        self.continueEP_button.clicked.connect(self.continue_EP)
+        self.adjustEP_button.clicked.connect(self.adjust_EP)
+        self.saveEP_button.clicked.connect(self.save_EP)
+        self.resetEP_button.clicked.connect(self.reset_EPpage)
+        self.swiEP_box.stateChanged.connect(self.enablePlot_swiBox)
 
     def initUI(self):
+        # manual baseline correction
+        swi_label, swi_unit_label = QLabel(self), QLabel(self)
+        swi_label.setText('Actual correction: '), swi_unit_label.setText('µm')
+        self.swi_edit = QLineEdit(self)
+        self.swi_edit.setValidator(QDoubleValidator()), self.swi_edit.setAlignment(Qt.AlignRight)
+        self.swi_edit.setMaximumWidth(100), self.swi_edit.setText('--'), self.swi_edit.setEnabled(False)
+
+        # option to select the SWI (baseline) from the O2 calculations in case O2 was selected
+        self.swiEP_box = QCheckBox('SWI from O2 analysis', self)
+        self.swiEP_box.setFont(QFont('Helvetica Neue', fs_font))
+        self.swiEP_box.setVisible(True), self.swiEP_box.setEnabled(False)
+
         # user option to consider drift correction
-        self.driftEP_box = QCheckBox('Include drift correction', self)
+        drift_label, self.driftEP_box = QLabel(self), QCheckBox('Yes, please', self)
+        drift_label.setText('Drift correction')
         self.driftEP_box.setFont(QFont('Helvetica Neue', int(fs_font*1.15)))
+        self.driftEP_box.setChecked(False)
 
         # Action button
         self.saveEP_button = QPushButton('Save', self)
@@ -3385,18 +3401,23 @@ class epPage(QWizardPage):
         mlayout2.addLayout(vbox1_top), mlayout2.addLayout(vbox1_middle), mlayout2.addLayout(vbox1_bottom)
 
         swiarea = QGroupBox("Navigation panel")
-        swiarea.setMinimumHeight(100)
+        swiarea.setMinimumHeight(125)
         grid_swi = QGridLayout()
         swiarea.setFont(QFont('Helvetica Neue', fs_font))
         vbox1_top.addWidget(swiarea)
         swiarea.setLayout(grid_swi)
 
         # include widgets in the layout
-        grid_swi.addWidget(self.driftEP_box, 0, 0)
-        grid_swi.addWidget(self.continueEP_button, 1, 0)
-        grid_swi.addWidget(self.adjustEP_button, 1, 1)
-        grid_swi.addWidget(self.resetEP_button, 1, 2)
-        grid_swi.addWidget(self.saveEP_button, 1, 3)
+        grid_swi.addWidget(drift_label, 0, 0)
+        grid_swi.addWidget(self.driftEP_box, 0, 1)
+        grid_swi.addWidget(swi_label, 1, 0)
+        grid_swi.addWidget(self.swi_edit, 1, 1)
+        grid_swi.addWidget(swi_unit_label, 1, 2)
+        grid_swi.addWidget(self.swiEP_box, 1, 3)
+        grid_swi.addWidget(self.continueEP_button, 2, 0)
+        grid_swi.addWidget(self.adjustEP_button, 2, 1)
+        grid_swi.addWidget(self.resetEP_button, 2, 2)
+        grid_swi.addWidget(self.saveEP_button, 2, 3)
 
         # draw additional "line" to separate parameters from plots and to separate navigation from rest
         vline = QFrame()
@@ -3407,7 +3428,7 @@ class epPage(QWizardPage):
         # plotting area
         self.figEP, self.axEP = plt.subplots(figsize=(5, 3))
         self.canvasEP = FigureCanvasQTAgg(self.figEP)
-        self.axEP.set_xlabel('EP (mV)'), self.axEP.set_ylabel('Depth / µm')
+        self.axEP.set_xlabel('EP / mV'), self.axEP.set_ylabel('Depth / µm')
         self.axEP.invert_yaxis()
         self.figEP.tight_layout(pad=1.5)
         sns.despine()
@@ -3424,8 +3445,676 @@ class epPage(QWizardPage):
         grid_ep.addWidget(self.canvasEP, 2, 0)
         self.setLayout(mlayout2)
 
+    def enablePlot_swiBox(self):
+        if self.status_EP >= 1:
+            if self.swiEP_box.checkState() == 0:
+                self.continueEP_button.setEnabled(True), self.swi_edit.setEnabled(True)
+            else:
+                self.continueEP_button.setEnabled(False)
+
+    def load_EPdata(self):
+        if self.field("SoftwareFile") == 'True':
+            dsheets = dbs._loadFile4GUI(file=self.field("Data"))
+        else:
+            # old version with pre-processed files:
+            dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+
+        # pre-check whether pH_all in sheet names
+        sheet_select = dbs.sheetname_check(dsheets, para='EP')
+
+        # !!! TODO: field("SoftwareFile") might be depreciated in the future
+        #  prepare file depending on the type
+        if self.field("SoftwareFile") == 'True':
+            ddata = dsheets[sheet_select]
+        else:
+            ddata = dsheets[sheet_select].set_index('Nr')
+
+        # list all available cores for pH sheet (in timely order, e.g., not ordered in ascending/ descending order)
+        self.ls_core = list(dict.fromkeys(ddata['Core'].to_numpy()))
+
+        # import all measurements for given parameter
+        [self.dEP_core, ls_nr,
+         self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
+
+        # order depth index ascending
+        self.dEP_core = dict(map(lambda c: (c, dict(map(lambda s: (s, self.dEP_core[c][s].sort_index(ascending=True)),
+                                                        self.dEP_core[c].keys()))), self.dEP_core.keys()))
+        results['EP raw data'] = self.dEP_core
+
+    def continue_EP(self):
+        # set status for process control
+        self.status_EP = 0
+
+        # load data
+        self.load_EPdata()
+
+        # ----------------------------------------------------------------------------------
+        # adjust all the core plots to the same x-scale
+        dfEP_scale = pd.concat([pd.DataFrame([(self.dEP_core[c][n]['EP_mV'].min(), self.dEP_core[c][n]['EP_mV'].max())
+                                              for n in self.dEP_core[c].keys()]) for c in self.dEP_core.keys()])
+        self.scale0 = dfEP_scale[0].min(), dfEP_scale[1].max()
+        # use self.scale0 for the initial plot but make it possible to update self.scale
+        self.scale = self.scale0
+
+        # plot the pH profile for the first core
+        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core), scale=self.scale0,
+                                    ls_core=self.ls_core, col_name='EP_mV', fig=self.figEP, ax=self.axEP)
+        # slider initialized to first core
+        self.sliderEP.setMinimum(int(min(self.ls_core))), self.sliderEP.setMaximum(int(max(self.ls_core)))
+        self.sliderEP.setValue(int(min(self.ls_core)))
+        self.sldEP_label.setText('core: {}'.format(int(min(self.ls_core))))
+
+        # when slider value change (on click), return new value and update figure plot
+        self.sliderEP.valueChanged.connect(self.sliderEP_update)
+
+        # update continue button to "update" in case the swi shall be updated
+        self.adjustEP_button.setEnabled(True)
+        self.continueEP_button.disconnect()
+        if self.driftEP_box.isChecked():
+            self.continueEP_button.clicked.connect(self.continue_EPII)
+        else:
+            self.continueEP_button.clicked.connect(self.continue_EPIII)
+            self.swi_edit.setEnabled(True)
+
+            # set options for swi correction
+            if 'O2 penetration depth' not in results.keys():
+                self.swiEP_box.setEnabled(False)
+
+    def sliderEP_update(self):
+        if self.ls_core:
+            # allow only discrete values according to existing cores
+            core_select = min(self.ls_core, key=lambda x: abs(x - self.sliderEP.value()))
+
+            # update slider position and label
+            self.sliderEP.setValue(int(core_select))
+            self.sldEP_label.setText('core: {}'.format(core_select))
+
+            # update plot according to selected data set and core
+            data = self.dEP_corr if 'EP drift corrected' in results.keys() else self.dEP_core
+            dfEP_scale = pd.concat([pd.DataFrame([(data[c][n]['EP_mV'].min(), data[c][n]['EP_mV'].max())
+                                                  for n in data[c].keys()]) for c in data.keys()])
+            scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
+            self.scale = scale_plot
+
+            ls = '-.' if self.status_EP == 0 else '-'
+            figEP0 = plot_initalProfile(data=data, para='EP', unit='mV', col_name='EP_mV', core=core_select,
+                                        ls_core=self.ls_core, scale=scale_plot, ls=ls, fig=self.figEP, ax=self.axEP)
+            self.figEP.canvas.draw()
+
+    def continue_EPII(self):
+        # update status for process control
+        self.status_EP += 1
+
+        # identify closest value in list
+        core_select = closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
+
+        # drift correction in case it was selected
+        self.drift_correctionEP()
+
+        # store drift corrected EP
+        results['EP drift corrected'] = self.dEP_corr
+
+        # plot the pH profile for the first core
+        dfEP_scale = pd.concat([pd.DataFrame([(self.dEP_corr[c][n]['EP_mV'].min(), self.dEP_corr[c][n]['EP_mV'].max())
+                                              for n in self.dEP_corr[c].keys()]) for c in self.dEP_corr.keys()])
+        scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
+        self.scale = scale_plot
+        # scale_plot = self.scale0 if len(scaleEP) == 0 else scaleEP
+        figEP0 = plot_initalProfile(data=self.dEP_corr, para='EP', unit='mV', col_name='EP_mV', core=core_select,
+                                    ls_core=self.ls_core, scale=scale_plot, ls='-', fig=self.figEP, ax=self.axEP)
+        self.figEP.canvas.draw()
+
+        # !!!TODO: allow de-checking of sample (which is not an EP signal) in figure plot
+
+
+
+        # slider initialized to first core
+        self.sliderEP.setValue(int(core_select)), self.sldEP_label.setText('core: {}'.format(int(core_select)))
+
+        # when slider value change (on click), return new value and update figure plot
+        self.sliderEP.valueChanged.connect(self.sliderEP_update)
+
+        self.continueEP_button.disconnect()
+        self.continueEP_button.clicked.connect(self.continue_EPIII)
+
+        # update layout
+        self.swiEP_box.setEnabled(True) if self.field("SWI pH as o2") == 'True' else self.swiEP_box.setEnabled(False)
+        self.swi_edit.setEnabled(True)
+
+    def drift_correctionEP(self):
+        # get first data point (as we are sure this was measured in the water column)
+        ddict = dict(map(lambda c: (c, pd.DataFrame([(self.dEP_core[c][s]['EP_mV'].values[0],
+                                                      self.dEP_core[c][s]['EP_mV'].index[0])
+                                                     for s in self.dEP_core[c].keys()], index=self.dEP_core[c].keys())),
+                         self.ls_core))
+        df = pd.concat(ddict, axis=0)
+
+        # polynomial fit of 2nd order: ax**2 + bx + c = y
+        paraFit = np.polyfit(np.arange(0, len(df.index)), df[0].to_numpy(), deg=2)
+
+        # apply drift correction
+        self.dEP_corr = dict()
+        i = 0
+        for c in self.dEP_core.keys():
+            d = dict()
+            for s in self.dEP_core[c].keys():
+                d_corr = self.dEP_core[c][s]['EP_mV'] + (paraFit[0]*(i**2) + paraFit[1]*i)
+                d[s] = pd.DataFrame(d_corr, columns=['EP_mV'])
+                i += 1
+            self.dEP_corr[c] = d
+
+    def swi_correctionEP(self):
+        # identify closest value in list
+        core_select = min(self.ls_core, key=lambda x: abs(x - self.sliderEP.value()))
+        if self.swiEP_box.checkState() == 0:
+            self.continueEP_button.setEnabled(True)
+
+            # update information about actual correction of pH profile
+            if '--' in self.swi_edit.text():
+                results['EP swi depth'] = dict({core_select: 0.})
+            elif 'EP swi depth' in results.keys():
+                if core_select in results['EP swi depth'].keys():
+                    results['EP swi depth'][core_select] += float(self.swi_edit.text())
+                else:
+                    dic1 = dict({core_select: float(self.swi_edit.text())})
+                    results['EP swi depth'].update(dic1)
+            else:
+                results['EP swi depth'] = dict({core_select: float(self.swi_edit.text())})
+
+            if '--' in self.swi_edit.text() or len(self.swi_edit.text()) == 0:
+                pass
+            else:
+                # correction of manually selected baseline
+                for s in self.data[core_select].keys():
+                    ynew = self.data[core_select][s].index - float(self.swi_edit.text())
+                    self.data[core_select][s].index = ynew
+        else:
+            dpen_av = dict()
+            for c in results['O2 penetration depth'].keys():
+                ls = list()
+                [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
+                 if "penetration" in i]
+                l = pd.DataFrame([results['O2 penetration depth'][c][s]
+                                  for s in results['O2 penetration depth'][c].keys()
+                                  if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
+                dpen_av[c] = l.mean()
+
+            # update information about actual correction of pH profile
+            if 'EP swi depth' in results.keys():
+                for c in self.data.keys():
+                    if c in results['EP swi depth'].keys():
+                        results['EP swi depth'][c] += dpen_av[c]['Depth (µm)']
+                    else:
+                        results['EP swi depth'][c] = dpen_av[c]['Depth (µm)']
+            else:
+                results['EP swi depth'] = dpen_av
+
+            # SWI correction as for O2 project
+            for c in self.data.keys():
+                for s in self.data[c].keys():
+                    xnew = [i - dpen_av[c]['Depth (µm)'] for i in self.data[c][s].index]
+                    self.data[c][s].index = xnew
+
+            # SWI correction applied only once
+            self.continueEP_button.setEnabled(False)
+            results['EP swi adjusted'] = self.data
+
+    def continue_EPIII(self):
+        # update status for process control
+        self.status_EP += 1
+
+        # identify closest value in list
+        core_select = closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
+
+        # get correct profile data (drift corrected, if available or raw data)
+        self.data = self.dEP_corr if 'EP drift corrected' in results.keys() else self.dEP_core
+
+        # check whether a (manual) swi correction is required. SWI correction only for current core
+        self.swi_correctionEP()
+
+        # plot the pH profile for the first core
+        dfEP_scale = pd.concat([pd.DataFrame([(self.data[c][n]['EP_mV'].min(), self.data[c][n]['EP_mV'].max())
+                                              for n in self.data[c].keys()]) for c in self.data.keys()])
+        scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
+        self.scale = scale_plot
+        figEP0 = plot_initalProfile(data=self.data, para='EP', unit='mV', col_name='EP_mV', core=core_select,
+                                    ls_core=self.ls_core, scale=scale_plot, ls='-', fig=self.figEP, ax=self.axEP)
+        self.figEP.canvas.draw()
+
+        # !!!TODO: allow de-checking of sample (which is not an EP signal) in figure plot
+
+
+
+
+        # slider initialized to first core
+        self.sliderEP.setValue(int(core_select)), self.sldEP_label.setText('core: {}'.format(int(core_select)))
+
+        # when slider value change (on click), return new value and update figure plot
+        self.sliderEP.valueChanged.connect(self.sliderEP_update)
+
+    def adjust_EP(self):
+        # open dialog window to adjust data presentation
+        self.status_EP = 1.5
+
+        global wAdjustEP
+        wAdjustEP = AdjustpHWindowEP()
+        if wAdjustEP.isVisible():
+            pass
+        else:
+            wAdjustEP.show()
+
+    def save_EP(self):
+        print('TODO: implement EP saving')
+
+    def reset_EPpage(self):
+        # update status for process control
+        self.status_EP = 0
+
+        # connect plot button to first part
+        self.continueEP_button.disconnect()
+        self.continueEP_button.clicked.connect(self.continue_EP)
+        self.continueEP_button.setEnabled(True)
+        self.adjustEP_button.setEnabled(False)
+        self.swi_edit.setEnabled(False)
+
+        # reset slider
+        self.count = 0
+        self.sliderEP.setValue(int(min(self.ls_core))), self.sldEP_label.setText('core: --')
+        self.sliderEP.disconnect()
+        self.sliderEP.valueChanged.connect(self.sliderEP_update)
+
+        # clear SWI correction
+        self.swi_edit.setText('--')
+        self.swiEP_box.setVisible(True), self.swiEP_box.setEnabled(False)
+        self.swiEP_box.setChecked(False)
+
+        # reset drift correction
+        self.driftEP_box.setChecked(False)
+
+        # empty figure
+        self.axEP.cla()
+        self.axEP.set_xlabel('EP / mV'), self.axEP.set_ylabel('Depth / µm')
+        self.axEP.invert_yaxis()
+        self.figEP.tight_layout(pad=1.5)
+        sns.despine()
+        self.figEP.canvas.draw()
+
     def nextId(self) -> int:
         return wizard_page_index["charPage"]
+
+
+class AdjustpHWindowEP(QDialog):
+    def __init__(self, sliderValue, ls_core, ddata, scale, col, figEP, axEP, swiEP_box, swiEP_edit, status):
+        super().__init__()
+        self.initUI()
+
+        # get the transmitted data
+        self.figEP, self.axEP, self.ddata, self.scale0, self.colEP = figEP, axEP, ddata, scale, col
+        self.ls_core, self.swiEP_box, self.status_EP = ls_core, swiEP_box, status
+        self.swiEP_edit = swiEP_edit
+        self.ls = '-.' if self.status_EP == 0 else '-'
+
+        # return current core - and get the samples to plot (via slider selection)
+        self.Core = min(self.ls_core, key=lambda x: abs(x - sliderValue))
+
+        # plot all samples from current core
+        ep_nr = min(self.ddata[self.Core].keys())
+
+        # get pH data and in case apply depth correction in case it was done for H2S / total sulfide
+        fig, self.ax1 = plot_adjustEP(core=self.Core, sample=ep_nr, col=self.colEP, dfCore=self.ddata[self.Core],
+                                      scale=self.scale0, fig=self.figEPs, ax=self.axEPs)
+
+        # connect onclick event with function
+        self.ls_out, self.ls_cropy = list(), list()
+        self.figEPs.canvas.mpl_connect('button_press_event', self.onclick_updateEP)
+
+        # update slider range to number of samples and set to first sample
+        self.slider1EP.setMinimum(int(min(self.ddata[self.Core].keys())))
+        self.slider1EP.setMaximum(int(max(self.ddata[self.Core].keys())))
+        self.slider1EP.setValue(int(min(self.ddata[self.Core].keys())))
+        self.sldEP1_label.setText('sample: ' + str(int(min(self.ddata[self.Core].keys()))))
+
+        # when slider value change (on click), return new value and update figure plot
+        self.slider1EP.valueChanged.connect(self.slider1EP_update)
+        self.figEPs.canvas.draw()
+
+        # connect checkbox and load file button with a function
+        self.scale = list()
+        self.adjust_button.clicked.connect(self.adjustEP)
+        self.reset_button.clicked.connect(self.resetPlotEP)
+        self.close_button.clicked.connect(self.close_windowEP)
+
+    def initUI(self):
+        self.setWindowTitle("Adjustment of data presentation")
+        self.setGeometry(650, 180, 600, 300)
+
+        # add description about how to use this window (slider, outlier detection, trim range)
+        self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
+                          "following options to improve the fit: \n- Trim pH range (y-axis): press CONTROL/COMMAND + "
+                          "select min/max \n- Remove outliers: press SHIFT + select individual points \n\nAt the end, "
+                          "update the plot by pressing the button ADJUST.")
+        self.msg.setWordWrap(True), self.msg.setFont(QFont('Helvetica Neue', int(fs_font*1.15)))
+
+        # Slider for different cores and label on the right
+        self.slider1H2S = QSlider(Qt.Horizontal)
+        self.slider1H2S.setMinimumWidth(350), self.slider1H2S.setFixedHeight(20)
+        self.sldH2S1_label = QLabel()
+        self.sldH2S1_label.setFixedWidth(70), self.sldH2S1_label.setText('sample: --')
+
+        # plot individual sample
+        self.figH2Ss, self.axH2Ss = plt.subplots(figsize=(5, 3))
+        self.figH2Ss.set_facecolor("none")
+        self.canvasH2Ss = FigureCanvasQTAgg(self.figH2Ss)
+        self.axH2Ss.set_xlabel('H2S / µmol/l'), self.axH2Ss.set_ylabel('Depth / µm')
+        self.axH2Ss.invert_yaxis()
+        self.figH2Ss.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15)
+        sns.despine()
+
+        # define pH range
+        H2Strim_label = QLabel(self)
+        H2Strim_label.setText('H2S range: '), H2Strim_label.setFont(QFont('Helvetica Neue', 12))
+        self.H2Strim_edit = QLineEdit(self)
+        self.H2Strim_edit.setValidator(QRegExpValidator()), self.H2Strim_edit.setAlignment(Qt.AlignRight)
+        self.H2Strim_edit.setMaximumHeight(int(fs_font*1.5))
+
+        # close the window again
+        self.close_button = QPushButton('OK', self)
+        self.close_button.setFixedWidth(100)
+        self.adjust_button = QPushButton('Adjust', self)
+        self.adjust_button.setFixedWidth(100)
+        self.reset_button = QPushButton('Reset', self)
+        self.reset_button.setFixedWidth(100)
+
+        # create grid and groups
+        mlayout2 = QVBoxLayout()
+        vbox2_top, vbox2_bottom, vbox2_middle = QHBoxLayout(), QHBoxLayout(), QVBoxLayout()
+        mlayout2.addLayout(vbox2_top), mlayout2.addLayout(vbox2_middle), mlayout2.addLayout(vbox2_bottom)
+
+        # add items to the layout grid
+        # top part
+        MsgGp = QGroupBox()
+        MsgGp.setFont(QFont('Helvetica Neue', 12))
+        MsgGp.setMinimumWidth(300)
+        gridMsg = QGridLayout()
+        vbox2_top.addWidget(MsgGp)
+        MsgGp.setLayout(gridMsg)
+
+        # add GroupBox to layout and load buttons in GroupBox
+        gridMsg.addWidget(self.msg, 1, 0)
+
+        # in-between for sample plot
+        plotGp = QGroupBox()
+        plotGp.setFont(QFont('Helvetica Neue', 12))
+        plotGp.setMinimumWidth(300), plotGp.setMinimumHeight(400)
+        gridFig = QGridLayout()
+        vbox2_middle.addWidget(plotGp)
+        plotGp.setLayout(gridFig)
+
+        # add GroupBox to layout and load buttons in GroupBox
+        gridFig.addWidget(self.slider1H2S, 1, 1)
+        gridFig.addWidget(self.sldH2S1_label, 1, 0)
+        gridFig.addWidget(self.canvasH2Ss, 2, 1)
+        gridFig.addWidget(H2Strim_label, 3, 0)
+        gridFig.addWidget(self.H2Strim_edit, 3, 1)
+
+        # bottom group for navigation panel
+        naviGp = QGroupBox("Navigation panel")
+        naviGp.setFont(QFont('Helvetica Neue', 12))
+        naviGp.setMinimumWidth(300), naviGp.setFixedHeight(75)
+        gridNavi = QGridLayout()
+        vbox2_bottom.addWidget(naviGp)
+        naviGp.setLayout(gridNavi)
+
+        # add GroupBox to layout and load buttons in GroupBox
+        gridNavi.addWidget(self.close_button, 1, 0)
+        gridNavi.addWidget(self.adjust_button, 1, 1)
+        gridNavi.addWidget(self.reset_button, 1, 2)
+
+        # add everything to the window layout
+        self.setLayout(mlayout2)
+
+    def onclick_updateEP(self, event):
+        modifiers = QtWidgets.QApplication.keyboardModifiers()
+        if modifiers == Qt.ControlModifier:
+            # change selected range when control is pressed on keyboard
+            # in case there are more than 2 points selected -> clear list and start over again
+            if len(self.ls_cropy) >= 2:
+                self.ls_cropy.clear()
+            self.ls_cropy.append(event.ydata)
+
+            # mark range in grey
+            self._markHLine()
+
+        if modifiers == Qt.ShiftModifier:
+            # mark outlier when shift is pressed on keyboard
+            self.ls_out.append(event.ydata)
+
+    def slider1EP_update(self):
+        # clear lists for another trial
+        self.ls_out, self.ls_cropy = list(), list()
+
+        # allow only discrete values according to existing cores
+        sample_select = min(self.ddata[self.Core].keys(), key=lambda x: abs(x - self.slider1EP.value()))
+
+        # update slider position and label
+        self.slider1EP.setValue(sample_select)
+        self.sldEP1_label.setText('sample: {}'.format(sample_select))
+
+        fig, self.ax1 = plot_adjustEP(core=self.Core, sample=sample_select, dfCore=self.ddata[self.Core], col=self.colEP,
+                                      scale=self.scale, fig=self.figEPs, ax=self.axEPs)
+        self.figEPs.canvas.draw()
+
+    def _markHLine(self):
+        # in case too many boundaries are selected, use the minimal/maximal values
+        if len(self.ls_cropy) > 2:
+            ls_crop = [min(self.ls_cropy), max(self.ls_cropy)]
+        else:
+            ls_crop = sorted(self.ls_cropy)
+
+        # current core, current sample
+        c, s = self.Core, int(self.sldEP1_label.text().split(' ')[-1])
+
+        # span grey area to mark outside range
+        if len(ls_crop) == 1:
+            sub = (self.ddata[self.Core][s].index[0] - ls_crop[-1], self.ddata[self.Core][s].index[-1] - ls_crop[-1])
+            if np.abs(sub[0]) < np.abs(sub[1]):
+                # left outer side
+                self.axEPs.axhspan(self.ddata[self.Core][s].index[0], ls_crop[-1], color='gray', alpha=0.3)
+            else:
+                # right outer side
+                self.axEPs.axhspan(ls_crop[-1], self.ddata[self.Core][s].index[-1], color='gray', alpha=0.3)
+        else:
+            if ls_crop[-1] < ls_crop[0]:
+                # left outer side
+                self.axEPs.axhspan(self.ddata[self.Core][s].index[0], ls_crop[-1], color='gray', alpha=0.3)
+            else:
+                # left outer side
+                self.axEPs.axhspan(ls_crop[-1], self.ddata[self.Core][s].index[-1], color='gray', alpha=0.3)
+
+        # draw vertical line to mark boundaries
+        [self.axEPs.axhline(x, color='k', ls='--', lw=0.5) for x in ls_crop]
+        self.figEPs.canvas.draw()
+
+    def updateEPscale(self):
+        # get pH range form LineEdit
+        if '-' in self.EPtrim_edit.text():
+            if len(self.EPtrim_edit.text().split('-')) > 1:
+                # assume that negative numbers occur
+                ls = re.findall(r"[-+]?(?:\d*\.\d+|\d+)", self.EPtrim_edit.text())
+                scale = (float(ls[0]), float(ls[1]))
+            else:
+                scale = (float(self.EPtrim_edit.text().split('-')[0]),
+                         float(self.EPtrim_edit.text().split('-')[1].strip()))
+
+        elif ',' in self.EPtrim_edit.text():
+            scale = (float(self.EPtrim_edit.text().split(',')[0]),
+                     float(self.EPtrim_edit.text().split(',')[1].strip()))
+        else:
+            scale = (float(self.EPtrim_edit.text().split(' ')[0]),
+                     float(self.EPtrim_edit.text().split(' ')[1].strip()))
+
+        # if pH range was updated by the user -> update self.scale (prevent further down)
+        if scale != self.scale:
+            self.scale = scale
+
+        # update global variable
+        global scaleEP
+        scaleEP = (round(self.scale[0], 2), round(self.scale[1], 2))
+
+    def cropDF_EP(self, s):
+        if self.ls_cropy:
+            # in case there was only 1 point selected -> extend the list to the other end
+            if len(self.ls_cropy) == 1:
+                sub = (self.ddata[self.Core][s].index[0] - self.ls_cropy[0],
+                       self.ddata[self.Core][s].index[-1] - self.ls_cropy[0])
+                if np.abs(sub[0]) < np.abs(sub[1]):
+                    self.ls_cropy = [self.ls_cropy[0], self.ddata[self.Core][s].index[-1]]
+                else:
+                    self.ls_cropy = [self.ddata[self.Core][s].index[0], self.ls_cropy[0]]
+
+            # actually crop the depth profile to the area selected.
+            # In case more than 2 points have been selected, choose the outer ones -> trim y-axis
+            dcore_crop = self.ddata[self.Core][s].loc[min(self.ls_cropy): max(self.ls_cropy)]
+        else:
+            dcore_crop = self.ddata[self.Core][s]
+        return dcore_crop
+
+    def popData_EP(self, dcore_crop):
+        ls_pop = [min(dcore_crop.index.to_numpy(), key=lambda x: abs(x - self.ls_out[p]))
+                  for p in range(len(self.ls_out))]
+        # drop in case value is still there
+        [dcore_crop.drop(p, inplace=True) for p in ls_pop if p in dcore_crop.index]
+        return dcore_crop
+
+    def adjustEP(self):
+        # check if the pH range (scale) changed
+        self.updateEPscale()
+        self.status_EP = 1
+
+        # current core, current sample
+        c, s = self.Core, int(self.sldEP1_label.text().split(' ')[-1])
+
+        # crop dataframe to selected range
+        dcore_crop = self.cropDF_EP(s=s)
+        # pop outliers from depth profile
+        if self.ls_out:
+            dcore_crop = self.popData_EP(dcore_crop=dcore_crop)
+
+        # update the general dictionary
+        self.ddata[self.Core][s] = dcore_crop
+        fig = plot_EPUpdate(core=self.Core, nr=s, df=dcore_crop, ddcore=self.ddata[self.Core], col=self.colEP,
+                            scale=self.scale, ax=self.axEPs, fig=self.figEPs)
+        self.figEPs.canvas.draw()
+
+        #  update range for pH plot and plot in main window
+        self.EPtrim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
+        fig0 = plot_initalProfile(data=self.ddata, para='EP', unit='mV', col_name='EP_mV', core=self.Core, ls=self.ls,
+                                  ls_core=self.ddata.keys(), scale=self.scale, fig=self.figEP, ax=self.axEP)
+        self.figEP.canvas.draw()
+        self.status_EP += 1
+
+    def resetPlotEP(self):
+        print('start all over again and use the raw data')
+
+    def close_windowEP(self):
+        self.hide()
+
+
+def plot_initalProfile(data, para, unit, col_name, core, ls_core, scale, ls='-.', fig=None, ax=None, show=True):
+    plt.ioff()
+    # identify closest value in list
+    core_select = closest_core(ls_core=ls_core, core=core)
+
+    # initialize figure
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(3, 4))
+    else:
+        ax.cla()
+    ax.set_xlabel('{} / {}'.format(para, unit)), ax.set_ylabel('Depth / µm')
+    ax.invert_yaxis()
+
+    if core_select != 0:
+        ax.title.set_text('{} depth profile for core {}'.format(para, core_select))
+        ax.axhline(0, lw=.5, color='k')
+        for en, nr in enumerate(data[core_select].keys()):
+            lw = 0.75 if ls == '-.' else 1.
+            mark = '.' if ls == '-.' else None
+            ax.plot(data[core_select][nr][col_name], data[core_select][nr].index, lw=lw, ls=ls, marker=mark, alpha=0.75,
+                    color=ls_col[en], label='sample ' + str(nr))
+        ax.legend(frameon=True, fontsize=10)
+
+    # update layout
+    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
+    ax.set_xlim(scale_min, scale[1]*1.015)
+    fig.tight_layout(pad=1.5)
+
+    if show is False:
+        plt.close(fig)
+    else:
+        fig.canvas.draw()
+    return fig
+
+
+def plot_adjustEP(core, sample, col, dfCore, scale, fig=None, ax=None):
+    # initialize first plot with first core and sample
+    fig, ax1 = GUI_adjustDepthEP(core=core, nr=sample, dfCore=dfCore, col=col, scale=scale, fig=fig, ax=ax)
+    fig.canvas.draw()
+    return fig, ax1
+
+
+def plot_EPUpdate(core, nr, df, ddcore, scale, col, fig, ax):
+    # clear coordinate system but keep the labels
+    ax.cla()
+    ax.title.set_text('EP profile for core {} - sample {}'.format(core, nr))
+    ax.set_xlabel('EP / mV'), ax.set_ylabel('Depth / µm')
+
+    # plotting part
+    ax.axhline(0, lw=.5, color='k')
+    for en in enumerate(ddcore.keys()):
+        if en[1] == nr:
+            pos = en[0]
+    ax.plot(df[col], df.index, lw=0.75, ls='-.', marker='.', ms=4, color=ls_col[pos], alpha=0.75)
+
+    # general layout
+    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
+    ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
+    sns.despine(), plt.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
+    fig.canvas.draw()
+    return fig
+
+
+def GUI_adjustDepthEP(core, nr, dfCore, scale, col, fig=None, ax=None, show=True):
+    plt.ioff()
+    # initialize figure plot
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(5, 3))
+    else:
+        ax.cla()
+
+    if core != 0:
+        ax.title.set_text('EP profile for core {} - sample {}'.format(core, nr))
+        ax.set_ylabel('Depth / µm'), ax.set_xlabel('EP / mV')
+
+    # plotting part
+    ax.axhline(0, lw=.5, color='k')
+
+    # position in sample list to get teh right color
+    for en in enumerate(dfCore.keys()):
+        if en[1] == nr:
+            pos = en[0]
+
+    ax.plot(dfCore[nr][col], dfCore[nr].index, lw=0.75, ls='-.', marker='.', ms=4, color=ls_col[pos], alpha=0.75)
+
+    # general layout
+    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
+    ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
+    sns.despine(), fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
+
+    if show is False:
+        plt.close(fig)
+    else:
+        fig.canvas.draw()
+    return fig
 
 
 # -----------------------------------------------
