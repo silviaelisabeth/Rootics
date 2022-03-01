@@ -91,11 +91,17 @@ class MagicWizard(QWizard):
         self.setGeometry(50, 50, 500, 300)
 
         # define Wizard style and certain options
-        self.setWizardStyle(QWizard.ModernStyle)
+        self.setWizardStyle(QWizard.MacStyle)
         self.setOptions(QtWidgets.QWizard.NoCancelButtonOnLastPage | QtWidgets.QWizard.HaveFinishButtonOnEarlyPages)
         # !!!TODO: enable logo in Subtitle
         # logo_image = QImage('Figure4icon.png')
         # self.setPixmap(QWizard.LogoPixmap, QPixmap.fromImage(logo_image))
+
+        # add a background image
+        path = os.path.join('/Users/au652733/Python/Project_CEMwizard/Pictures', 'leaves2.png')
+        pixmap = QtGui.QPixmap(path)
+        pixmap = pixmap.scaled(400, 500, QtCore.Qt.KeepAspectRatio)
+        self.setPixmap(QWizard.BackgroundPixmap, pixmap)
 
 
 class IntroPage(QWizardPage):
@@ -3171,9 +3177,6 @@ class AdjustpHWindowS(QDialog):
                     xnew = [i - dpenH2S_av[c]['Depth (µm)'] for i in self.pH_data[c][s].index]
                     self.pH_data[c][s].index = xnew
 
-            # SWI correction applied only once
-            self.continueh2s_button.setEnabled(False)
-
         # add to results dictionary
         if 'H2S total sulfide' in results.keys():
             results['H2S total sulfide swi corrected pH'] = self.pH_data
@@ -4273,6 +4276,7 @@ if __name__ == '__main__':
     # !!!TODO: hard coded path must be included in system files
     path = os.path.join('/Users/au652733/Python/Project_julia/', 'Figure4icon.jpg')
     app.setWindowIcon(QIcon(path))
+    app.setStyle('QtCurve') # options: 'Breeze', 'Oxygen', 'QtCurve', 'Windows', 'Fusion'
 
     Wizard = MagicWizard()
     # screen Size adjustment
