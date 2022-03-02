@@ -98,9 +98,9 @@ class MagicWizard(QWizard):
         # self.setPixmap(QWizard.LogoPixmap, QPixmap.fromImage(logo_image))
 
         # add a background image
-        path = os.path.join('/Users/au652733/Python/Project_CEMwizard/Pictures', 'leaves2.png')
+        path = os.path.join('/Users/au652733/Python/Project_CEMwizard/Pictures', 'leaves3.png')
         pixmap = QtGui.QPixmap(path)
-        pixmap = pixmap.scaled(400, 500, QtCore.Qt.KeepAspectRatio)
+        pixmap = pixmap.scaled(500, 500, QtCore.Qt.KeepAspectRatio)
         self.setPixmap(QWizard.BackgroundPixmap, pixmap)
 
 
@@ -2283,8 +2283,8 @@ class h2sPage(QWizardPage):
 
         # general layout of the H2S / total sulfide project
         self.setTitle("H2S / total sulfide depth profile")
-        self.setSubTitle("The depth profile will be plotted without any depth correction.  In case the pH depth profile"
-                         " is available,  the total sulfide concentration is calculated.")
+        self.setSubTitle("The depth profile will first be plotted without any depth correction.  In case the pH depth"
+                         " profile is available,  the total sulfide concentration is calculated.")
         self.initUI()
 
         # connect checkbox and load file button with a function
@@ -2447,7 +2447,8 @@ class h2sPage(QWizardPage):
 
         # update subtitle in case the pH profile was present as well
         if 'pH raw data' in results.keys():
-            self.setSubTitle("The total sulfide is calculated based on H2S as well as the temperature and salinity.")
+            self.setSubTitle("The total sulfide is calculated based on H2S as well as the temperature and salinity.  "
+                             "Please make sure both parameters are correct.")
 
         # load data
         self.load_H2Sdata()
@@ -3349,7 +3350,9 @@ class epPage(QWizardPage):
     def __init__(self, parent=None):
         super(epPage, self).__init__(parent)
         self.setTitle("EP depth profile")
-        self.setSubTitle("Press PLOT to start.")
+        self.setSubTitle("Press PLOT to start and display the initial EP profiles.  If a drift correction shall be "
+                         "included, make sure to check the checkbox.  At any case,  the profile can be adjusted by "
+                         "trimming the depth range and removing outliers.")
 
         self.status_EP = 0
         self.initUI()
@@ -3487,6 +3490,10 @@ class epPage(QWizardPage):
     def continue_EP(self):
         # set status for process control
         self.status_EP = 0
+
+        # update instruction
+        self.setSubTitle("Now,  the surface water interface can now be corrected. In case the O2 project was assessed "
+                         "before,  you can either use the depth determined there, or use your own depth. ")
 
         # load data
         self.load_EPdata()
