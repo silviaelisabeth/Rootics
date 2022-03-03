@@ -89,7 +89,7 @@ class MagicWizard(QWizard):
 
         # GUI layout
         self.setWindowTitle("Guide through the forest")
-        self.setGeometry(50, 50, 500, 300)
+        self.setGeometry(50, 50, 200, 200)
 
         # define Wizard style and certain options
         self.setWizardStyle(QWizard.MacStyle)
@@ -405,7 +405,7 @@ class o2Page(QWizardPage):
         super(o2Page, self).__init__(parent)
         self.setTitle("O2 depth profile")
         self.setSubTitle("Please enter the required parameters. The O2 depth profile will be determined accordingly."
-                         " \nTo start the analysis, press CONTINUE. \n")
+                         " \nTo start the analysis,  press CONTINUE. \n")
 
         # general layout
         self.initUI()
@@ -473,7 +473,7 @@ class o2Page(QWizardPage):
 
         para_settings = QGroupBox("Input for O2 analysis")
         grid_load = QGridLayout()
-        para_settings.setFont(QFont('Helvetica Neue', 12))
+        para_settings.setFont(QFont('Helvetica Neue', 12)), para_settings.setFixedHeight(150)
         vbox1_left.addWidget(para_settings)
         para_settings.setLayout(grid_load)
 
@@ -508,7 +508,8 @@ class o2Page(QWizardPage):
         sns.despine()
 
         O2_group = QGroupBox("O2 depth profile")
-        O2_group.setMinimumWidth(300), O2_group.setMinimumHeight(400)
+        # O2_group.setMinimumWidth(200), \
+        O2_group.setMinimumHeight(300)
         grid_o2 = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -1055,7 +1056,7 @@ class FitWindow(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Check fit for depth correction")
-        self.setGeometry(650, 180, 600, 400)
+        self.setGeometry(650, 50, 550, 300) # x-position, y-position, width, height
 
         # add description about how to use this window (slider, outlier detection, cropping area)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
@@ -1113,7 +1114,7 @@ class FitWindow(QDialog):
         # top part
         MsgGp = QGroupBox()
         MsgGp.setFont(QFont('Helvetica Neue', 12))
-        MsgGp.setMinimumWidth(300)
+        # MsgGp.setMinimumWidth(300)
         gridMsg = QGridLayout()
         vbox2_top.addWidget(MsgGp)
         MsgGp.setLayout(gridMsg)
@@ -1124,7 +1125,7 @@ class FitWindow(QDialog):
         # in-between for chi-2
         ChiGp = QGroupBox()
         ChiGp.setFont(QFont('Helvetica Neue', 12))
-        ChiGp.setMinimumWidth(300)
+        # ChiGp.setMinimumWidth(300)
         gridChi = QGridLayout()
         vbox2_middle.addWidget(ChiGp)
         ChiGp.setLayout(gridChi)
@@ -1136,7 +1137,8 @@ class FitWindow(QDialog):
         # middle part
         FitGp = QGroupBox("Sigmoidal fit and 1st derivative")
         FitGp.setFont(QFont('Helvetica Neue', 12))
-        FitGp.setMinimumWidth(300), FitGp.setMinimumHeight(400)
+        # FitGp.setMinimumWidth(300), \
+        FitGp.setMinimumHeight(300)
         gridFit = QGridLayout()
         vbox2_middle1.addWidget(FitGp)
         FitGp.setLayout(gridFit)
@@ -1148,7 +1150,8 @@ class FitWindow(QDialog):
 
         # bottom part
         BtnGp = QGroupBox()
-        BtnGp.setMinimumWidth(300), BtnGp.setFixedHeight(45)
+        # BtnGp.setMinimumWidth(300), \
+        BtnGp.setFixedHeight(45)
         gridBtn = QGridLayout()
         vbox2_bottom.addWidget(BtnGp)
         vbox2_bottom.setAlignment(self, Qt.AlignLeft | Qt.AlignTop)
@@ -1416,7 +1419,7 @@ def plot_FitUpdate(core, nr, dic_dcore, dfit, dic_deriv, fig, ax, ax1):
     # general layout
     sns.despine()
     ax.spines['right'].set_visible(True)
-    plt.tight_layout()
+    plt.tight_layout(pad=0.75)
     fig.canvas.draw()
     return fig
 
@@ -1449,7 +1452,7 @@ def GUI_FitDepth(core, nr, dfCore, dfFit, dfDeriv, fig=None, ax=None, ax1=None, 
     # general layout
     ax.set_xlim(dfCore[nr].index[0]*1.05, dfCore[nr].index[-1]*1.05)
     sns.despine()
-    ax.spines['right'].set_visible(True), plt.tight_layout()
+    ax.spines['right'].set_visible(True), plt.tight_layout(pad=1.)
 
     if show is False:
         plt.close(fig)
@@ -1743,15 +1746,16 @@ class phPage(QWizardPage):
         vbox1_middle.addWidget(vline)
 
         # plotting area
-        self.figpH, self.axpH = plt.subplots(figsize=(5, 3))
+        self.figpH, self.axpH = plt.subplots(figsize=(3, 2))
         self.canvaspH = FigureCanvasQTAgg(self.figpH)
         self.axpH.set_xlabel('pH value'), self.axpH.set_ylabel('Depth / µm')
         self.axpH.invert_yaxis()
-        self.figpH.tight_layout(pad=1.5)
+        self.figpH.tight_layout(pad=.5)
         sns.despine()
 
         pH_group = QGroupBox("pH depth profile")
-        pH_group.setMinimumWidth(350), pH_group.setMinimumHeight(400)
+        # pH_group.setMinimumWidth(250), \
+        pH_group.setMinimumHeight(300)
         grid_pH = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -2038,7 +2042,7 @@ class AdjustpHWindow(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Adjustment of data presentation")
-        self.setGeometry(650, 180, 600, 300)
+        self.setGeometry(650, 50, 500, 300) # x-position, y-position, height, width
 
         # add description about how to use this window (slider, outlier detection, trim range)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
@@ -2054,7 +2058,7 @@ class AdjustpHWindow(QDialog):
         self.sldpH1_label.setFixedWidth(70), self.sldpH1_label.setText('sample: --')
 
         # plot individual sample
-        self.figpHs, self.axpHs = plt.subplots(figsize=(5, 3))
+        self.figpHs, self.axpHs = plt.subplots(figsize=(3, 2))
         self.figpHs.set_facecolor("none")
         self.canvaspHs = FigureCanvasQTAgg(self.figpHs)
         self.axpHs.set_xlabel('pH value'), self.axpHs.set_ylabel('Depth / µm')
@@ -2087,7 +2091,7 @@ class AdjustpHWindow(QDialog):
         # top part
         MsgGp = QGroupBox()
         MsgGp.setFont(QFont('Helvetica Neue', 12))
-        MsgGp.setMinimumWidth(300)
+        # MsgGp.setMinimumWidth(300)
         gridMsg = QGridLayout()
         vbox2_top.addWidget(MsgGp)
         MsgGp.setLayout(gridMsg)
@@ -2098,7 +2102,8 @@ class AdjustpHWindow(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        plotGp.setMinimumWidth(300), plotGp.setMinimumHeight(400)
+        # plotGp.setMinimumWidth(200), \
+        plotGp.setMinimumHeight(300)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
         plotGp.setLayout(gridFig)
@@ -2113,7 +2118,8 @@ class AdjustpHWindow(QDialog):
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
         naviGp.setFont(QFont('Helvetica Neue', 12))
-        naviGp.setMinimumWidth(300), naviGp.setFixedHeight(75)
+        # naviGp.setMinimumWidth(300), \
+        naviGp.setFixedHeight(75)
         gridNavi = QGridLayout()
         vbox2_bottom.addWidget(naviGp)
         naviGp.setLayout(gridNavi)
@@ -2357,7 +2363,7 @@ def GUI_adjustDepth(core, nr, dfCore, scale, fig=None, ax=None, show=True):
     # general layout
     scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
     ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
-    sns.despine(), plt.tight_layout()
+    sns.despine(), plt.tight_layout(pad=0.5)
 
     if show is False:
         plt.close(fig)
@@ -2430,7 +2436,7 @@ class h2sPage(QWizardPage):
 
         # Slider for different cores and label on the right
         self.sliderh2s = QSlider(Qt.Horizontal)
-        self.sliderh2s.setMinimumWidth(350), self.sliderh2s.setFixedHeight(20)
+        self.sliderh2s.setMinimumWidth(250), self.sliderh2s.setFixedHeight(20)
         self.sldh2s_label = QLabel()
         self.sldh2s_label.setFixedWidth(50)
         self.sldh2s_label.setText('core: --')
@@ -2445,6 +2451,7 @@ class h2sPage(QWizardPage):
         grid_load = QGridLayout()
         para_settings.setFont(QFont('Helvetica Neue', 12))
         vbox1_top.addWidget(para_settings)
+        para_settings.setFixedHeight(150)
         para_settings.setLayout(grid_load)
 
         # include widgets in the layout
@@ -2471,15 +2478,17 @@ class h2sPage(QWizardPage):
         vbox1_middle.addWidget(vline)
 
         # plotting area
-        self.figh2s, self.axh2s = plt.subplots(figsize=(3, 4))
+        self.figh2s, self.axh2s = plt.subplots(figsize=(3, 2))
         self.canvash2s = FigureCanvasQTAgg(self.figh2s)
         self.axh2s.set_xlabel('H2S / µmol/l'), self.axh2s.set_ylabel('Depth / µm')
         self.axh2s.invert_yaxis()
-        self.figh2s.subplots_adjust(bottom=0.2, right=0.95, top=0.9, left=0.15)
+        self.figh2s.tight_layout(pad=0.5)
+        # self.figh2s.subplots_adjust(bottom=0.2, right=0.95, top=0.9, left=0.15)
         sns.despine()
 
         H2S_group = QGroupBox("H2S depth profile")
-        H2S_group.setMinimumWidth(350), H2S_group.setMinimumHeight(400)
+        # H2S_group.setMinimumWidth(250), \
+        H2S_group.setMinimumHeight(300)
         grid_H2S = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -2996,7 +3005,7 @@ class AdjustpHWindowS(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Adjustment of data presentation")
-        self.setGeometry(650, 180, 600, 300)
+        self.setGeometry(650, 50, 500, 300)
 
         # add description about how to use this window (slider, outlier detection, trim range)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
@@ -3012,11 +3021,12 @@ class AdjustpHWindowS(QDialog):
         self.sldH2S1_label.setFixedWidth(70), self.sldH2S1_label.setText('sample: --')
 
         # plot individual sample
-        self.figH2Ss, self.axH2Ss = plt.subplots(figsize=(5, 3))
+        self.figH2Ss, self.axH2Ss = plt.subplots(figsize=(3, 2))
         self.figH2Ss.set_facecolor("none")
         self.canvasH2Ss = FigureCanvasQTAgg(self.figH2Ss)
         self.axH2Ss.set_xlabel('H2S / µmol/l'), self.axH2Ss.set_ylabel('Depth / µm')
         self.axH2Ss.invert_yaxis()
+        #self.figH2Ss.tight_layout(pad=0.5)
         self.figH2Ss.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15)
         sns.despine()
 
@@ -3044,7 +3054,7 @@ class AdjustpHWindowS(QDialog):
         # top part
         MsgGp = QGroupBox()
         MsgGp.setFont(QFont('Helvetica Neue', 12))
-        MsgGp.setMinimumWidth(300)
+        # MsgGp.setMinimumWidth(300)
         gridMsg = QGridLayout()
         vbox2_top.addWidget(MsgGp)
         MsgGp.setLayout(gridMsg)
@@ -3055,7 +3065,8 @@ class AdjustpHWindowS(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        plotGp.setMinimumWidth(300), plotGp.setMinimumHeight(400)
+        # plotGp.setMinimumWidth(250), \
+        plotGp.setMinimumHeight(300)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
         plotGp.setLayout(gridFig)
@@ -3070,7 +3081,8 @@ class AdjustpHWindowS(QDialog):
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
         naviGp.setFont(QFont('Helvetica Neue', 12))
-        naviGp.setMinimumWidth(300), naviGp.setFixedHeight(75)
+        #naviGp.setMinimumWidth(300),\
+        naviGp.setFixedHeight(75)
         gridNavi = QGridLayout()
         vbox2_bottom.addWidget(naviGp)
         naviGp.setLayout(gridNavi)
@@ -3376,7 +3388,7 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1
     sns.despine()
     if pH:
         ax.spines['top'].set_visible(True)
-    plt.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
+    plt.tight_layout(pad=.5) #subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
     fig.canvas.draw()
     return fig, ax1
 
@@ -3433,9 +3445,9 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, fig=Non
     sns.despine()
     ax.spines['top'].set_visible(True) if pH else ax.spines['top'].set_visible(False)
     if pH:
-        fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
+        fig.tight_layout(pad=0.5)#fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
     else:
-        fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
+        fig.tight_layout(pad=0.5)#+fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
 
     if show is False:
         plt.close(fig)
@@ -3506,9 +3518,8 @@ class epPage(QWizardPage):
         mlayout2.addLayout(vbox1_top), mlayout2.addLayout(vbox1_middle), mlayout2.addLayout(vbox1_bottom)
 
         swiarea = QGroupBox("Navigation panel")
-        swiarea.setMinimumHeight(125)
         grid_swi = QGridLayout()
-        swiarea.setFont(QFont('Helvetica Neue', fs_font))
+        swiarea.setFont(QFont('Helvetica Neue', fs_font)), swiarea.setMinimumHeight(115)
         vbox1_top.addWidget(swiarea)
         swiarea.setLayout(grid_swi)
 
@@ -3531,15 +3542,16 @@ class epPage(QWizardPage):
         vbox1_middle.addWidget(vline)
 
         # plotting area
-        self.figEP, self.axEP = plt.subplots(figsize=(5, 3))
+        self.figEP, self.axEP = plt.subplots(figsize=(3, 2))
         self.canvasEP = FigureCanvasQTAgg(self.figEP)
         self.axEP.set_xlabel('EP / mV'), self.axEP.set_ylabel('Depth / µm')
         self.axEP.invert_yaxis()
-        self.figEP.tight_layout(pad=1.5)
+        self.figEP.tight_layout(pad=.5)
         sns.despine()
 
         ep_group = QGroupBox("EP depth profile")
-        ep_group.setMinimumWidth(350), ep_group.setMinimumHeight(400)
+        #ep_group.setMinimumWidth(200),\
+        ep_group.setMinimumHeight(300)
         grid_ep = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -3901,7 +3913,7 @@ class AdjustpHWindowEP(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Adjustment of data presentation")
-        self.setGeometry(650, 180, 600, 300)
+        self.setGeometry(650, 50, 500, 300)
 
         # add description about how to use this window (slider, outlier detection, trim range)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
@@ -3917,12 +3929,12 @@ class AdjustpHWindowEP(QDialog):
         self.sldEP1_label.setFixedWidth(70), self.sldEP1_label.setText('sample: --')
 
         # plot individual sample
-        self.figEPs, self.axEPs = plt.subplots(figsize=(5, 3))
+        self.figEPs, self.axEPs = plt.subplots(figsize=(3, 2))
         self.figEPs.set_facecolor("none")
         self.canvasEPs = FigureCanvasQTAgg(self.figEPs)
         self.axEPs.set_xlabel('EP / mV'), self.axEPs.set_ylabel('Depth / µm')
         self.axEPs.invert_yaxis()
-        self.figEPs.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15)
+        self.figEPs.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.25)
         sns.despine()
 
         # define pH range
@@ -3949,7 +3961,7 @@ class AdjustpHWindowEP(QDialog):
         # top part
         MsgGp = QGroupBox()
         MsgGp.setFont(QFont('Helvetica Neue', 12))
-        MsgGp.setMinimumWidth(300)
+        # MsgGp.setMinimumWidth(300)
         gridMsg = QGridLayout()
         vbox2_top.addWidget(MsgGp)
         MsgGp.setLayout(gridMsg)
@@ -3960,7 +3972,8 @@ class AdjustpHWindowEP(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        plotGp.setMinimumWidth(300), plotGp.setMinimumHeight(400)
+        #plotGp.setMinimumWidth(250), \
+        plotGp.setMinimumHeight(300)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
         plotGp.setLayout(gridFig)
@@ -3975,7 +3988,8 @@ class AdjustpHWindowEP(QDialog):
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
         naviGp.setFont(QFont('Helvetica Neue', 12))
-        naviGp.setMinimumWidth(300), naviGp.setFixedHeight(75)
+        # naviGp.setMinimumWidth(300), \
+        naviGp.setFixedHeight(75)
         gridNavi = QGridLayout()
         vbox2_bottom.addWidget(naviGp)
         naviGp.setLayout(gridNavi)
@@ -4256,7 +4270,7 @@ def plot_EPUpdate(core, nr, df, ddcore, scale, col, fig, ax):
     # general layout
     scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
     ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
-    sns.despine(), plt.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
+    sns.despine(), plt.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.25)
     fig.canvas.draw()
     return fig
 
@@ -4286,7 +4300,7 @@ def GUI_adjustDepthEP(core, nr, dfCore, scale, col, fig=None, ax=None, show=True
     # general layout
     scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
     ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
-    sns.despine(), fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.15)
+    sns.despine(), fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.215)
 
     if show is False:
         plt.close(fig)
@@ -4368,7 +4382,7 @@ class SalConvWindowO2(QDialog):
         # top part
         MsgGp = QGroupBox()
         MsgGp.setFont(QFont('Helvetica Neue', 12))
-        MsgGp.setMinimumWidth(300)
+        # MsgGp.setMinimumWidth(300)
         gridMsg = QGridLayout()
         vbox2_top.addWidget(MsgGp)
         MsgGp.setLayout(gridMsg)
@@ -4379,7 +4393,8 @@ class SalConvWindowO2(QDialog):
         # in-between for input parameter
         plotGp = QGroupBox("User input")
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        plotGp.setMinimumWidth(250), plotGp.setMinimumHeight(200)
+        # plotGp.setMinimumWidth(250), \
+        plotGp.setMinimumHeight(200)
         grid_para = QGridLayout()
         vbox2_middle.addWidget(plotGp)
         plotGp.setLayout(grid_para)
@@ -4402,7 +4417,8 @@ class SalConvWindowO2(QDialog):
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
         naviGp.setFont(QFont('Helvetica Neue', 12))
-        naviGp.setMinimumWidth(250), naviGp.setFixedHeight(75)
+        # naviGp.setMinimumWidth(250), \
+        naviGp.setFixedHeight(75)
         gridNavi = QGridLayout()
         vbox2_bottom.addWidget(naviGp)
         naviGp.setLayout(gridNavi)
