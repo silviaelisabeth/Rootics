@@ -2828,7 +2828,7 @@ class h2sPage(QWizardPage):
             else:
                 scale_plot = scaleh2s
             figH2S = plot_H2SProfile(data_H2S=self.dH2S_core, core=core_select, ls_core=self.ls_core, scale=scale_plot,
-                                     fig=self.figh2s, ax=self.axh2s, col=self.colH2S,  ls='-.')
+                                     fig=self.figh2s, ax=self.axh2s, col=self.colH2S,  ls='-')
             self.figh2s.canvas.draw()
 
     def sliderh2s_updateII(self):
@@ -3313,9 +3313,9 @@ def plot_H2SProfile(data_H2S, core, ls_core, scale, col, ls='-.', fig=None, ax=N
         ax.axhline(0, lw=.5, color='k')
         for en, nr in enumerate(data_H2S[core_select].keys()):
             df = data_H2S[core_select][nr][para].dropna()
-            mark ='.' if ls == '-.' else None
+            mark = '.' if ls == '-.' else None
             lw = 1.0 if ls == '-.' else 0.75
-            ax.plot(df, df.index, lw=0.75, ls=ls, marker=mark, color=ls_col[en], alpha=0.75, label='sample ' + str(nr))
+            ax.plot(df, df.index, lw=lw, ls=ls, marker=mark, color=ls_col[en], alpha=0.75, label='sample ' + str(nr))
         ax.legend(frameon=True, fontsize=10)
 
     # update layout
