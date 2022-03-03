@@ -16,7 +16,7 @@ from PyQt5 import QtGui
 import qtawesome as qta
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                              QLineEdit, QDialog, QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget, QWizard,
-                             QWizardPage, QInputDialog)
+                             QWizardPage, QInputDialog, QMainWindow)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import *
 import matplotlib.pyplot as plt
@@ -50,6 +50,7 @@ sns.set_context('paper'), sns.set_style('ticks')
 # global variables
 dobj_hid, dpen_glob, dO2_core, results, dout = dict(), dict(), dict(), dict(), dict()
 scalepH, scaleh2s, scaleEP = list(), list(), list()
+core_select, userCal, ret = None, None, None
 
 # wizard architecture - how are the pages arranged?
 wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "epPage": 4, "charPage": 5}
@@ -100,7 +101,7 @@ class MagicWizard(QWizard):
         # add a background image
         path = os.path.join('/Users/au652733/Python/Project_CEMwizard/Pictures', 'leaves3.png')
         pixmap = QtGui.QPixmap(path)
-        pixmap = pixmap.scaled(500, 500, QtCore.Qt.KeepAspectRatio)
+        pixmap = pixmap.scaled(700, 500, QtCore.Qt.KeepAspectRatio)
         self.setPixmap(QWizard.BackgroundPixmap, pixmap)
 
 
@@ -108,8 +109,8 @@ class IntroPage(QWizardPage):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("InfoPage")
-        self.setSubTitle("Please provide the path to your measurement file and select which of the parameters should "
-                         "be analyzed.\nWe will then guide you through the analysis.\n")
+        self.setSubTitle("Enter the path to your measurement file and select which of the parameters should be "
+                         "analyzed.\nWe will then guide you through the analysis.\n")
 
         # create layout
         self.initUI()
@@ -574,10 +575,15 @@ class o2Page(QWizardPage):
                                            salinity=float(self.salinity_edit.text()))
 
     def User4Calibration(self, ):
-        userCal = QMessageBox.question(self, 'Calibration', 'Shall we use the calibration from the measurement file?'
-                                                            '\nIf not,  the sensor will be recalibrated based on the '
-                                                            'given temperature & salinity.',
-                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        global userCal
+        if userCal:
+            pass
+        else:
+            userCal = QMessageBox.question(self, 'Calibration', 'Shall we use the calibration from the measurement '
+                                                                'file? \nIf not,  the sensor will be recalibrated based'
+                                                                ' on the given temperature & salinity.',
+                                           QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            # userCal.setFont(QFont('Helvetica Neue', 12))
 
         if userCal == QMessageBox.Yes:
             # define for output metadata
@@ -594,16 +600,20 @@ class o2Page(QWizardPage):
             self.continue_button.clicked.connect(self.continue_processII)
 
         elif userCal == QMessageBox.No:
-            msgBox1 = QMessageBox()
-            msgBox1.setIcon(QMessageBox.Question)
-            msgBox1.setFont(QFont('Helvetica Neue', 11))
-            msgBox1.setWindowTitle('Recalibration')
-            msgBox1.setText('Shall we do the calibration core by core or should we apply one calibration to all '
-                            'samples?')
-            msgBox1.addButton('core by core', msgBox1.ActionRole)
-            msgBox1.addButton('apply to all', msgBox1.ActionRole)
+            global ret
+            if ret:
+                pass
+            else:
+                msgBox1 = QMessageBox()
+                msgBox1.setIcon(QMessageBox.Question)
+                msgBox1.setFont(QFont('Helvetica Neue'))
+                msgBox1.setWindowTitle('Recalibration')
+                msgBox1.setText('Shall we do the calibration core by core or should we apply one calibration to all '
+                                'samples?')
+                msgBox1.addButton('core by core', msgBox1.ActionRole)
+                msgBox1.addButton('apply to all', msgBox1.ActionRole)
 
-            ret = msgBox1.exec()
+                ret = msgBox1.exec()
 
             global lim, lim_min
             if ret == 0:
@@ -621,39 +631,32 @@ class o2Page(QWizardPage):
                 self.continue_button.disconnect()
                 self.continue_button.clicked.connect(self.continue_processII)
             else:
-                # calibration of one core applied to all others -> select core
-                text, ok = QInputDialog.getText(self, 'Core selection',
-                                                'Select core that shall be used for recalibration:')
-                if ok is True:
-                    try:
-                        if int(text) in self.ls_core:
-                            # possible responses include either "core" or only the number -> find pattern with re
-                            dO2_core.update(dbs.O2calc4conc_one4all(core_sel=int(text), lim_min=lim_min, lim=lim,
-                                                                    o2_dis=self.o2_dis, unit='µmol/l',
-                                                                    data_shift=self.ddata_shift[self.ls_colname[-1]]))
-                            results['O2 profile'] = dO2_core
-                        else:
-                            # calibration of one core applied to all others -> select core
-                            text, ok = QInputDialog.getText(self, 'Core selection', 'Select EXISTING core that shall'
-                                                                                    ' be used for recalibration:')
-                            if ok is True:
-                                # possible responses include either "core" or only the number -> find pattern with re
-                                dO2_core.update(dbs.O2calc4conc_one4all(core_sel=int(text), lim_min=lim_min, lim=lim,
-                                                                        o2_dis=self.o2_dis, unit='µmol/l',
-                                                                        data_shift=self.ddata_shift[self.ls_colname[-1]]))
-                                results['O2 profile'] = dO2_core
+                # open window (QDialog) to identify the core that shall be used
+                global wCore
+                wCore = CalibCore(self.ls_core)
+                if wCore.isVisible():
+                    pass
+                else:
+                    wCore.show()
 
-                        # define for output metadata
-                        self.typeCalib = 'recalibration one core ' + text + ' to all'
+                # pause until we have a core selected
+                try:
+                    if core_select:
+                        # do not show the selection window anymore but continue the process
+                        wCore.hide()
+                    else:
+                        userCal, ret = QMessageBox.No, 1
+                        # open window (QDialog) to identify the core that shall be used
+                        wCore = CalibCore(self.ls_core)
 
-                        # continue with the process - first execute without any click
-                        self.continue_processII()
-                        self.continue_button.disconnect()
-                        self.continue_button.clicked.connect(self.continue_processII)
-                    except:
-                        # calibration of one core applied to all others -> select core
-                        QInputDialog.getText(self, 'Core selection', 'Select EXISTING core that shall be used for '
-                                                                     'recalibration:')
+                    # continue with the process - first execute without any click
+                    self.continue_processI()
+                    # update process that shall be executed when button is clicked
+                    self.continue_button.disconnect()
+                    self.continue_button.clicked.connect(self.continue_processI)
+                except:
+                    userCal, ret = QMessageBox.No, 1
+                    wCore = CalibCore(self.ls_core)
 
     def load_O2data(self):
         # load excel sheet with all measurements
@@ -728,7 +731,7 @@ class o2Page(QWizardPage):
             self.pre_check_calibration()
 
             # update subtitle for progress report
-            self.setSubTitle("Analysis starts with the correction of the surface-water interface (SWI).  If the "
+            self.setSubTitle("The analysis starts with the correction of the surface-water interface (SWI).  If the "
                              "correction looks good,  press CONTINUE.  Otherwise,  press CHECK FIT for adjustments.")
             # load data from excel sheet depending on the type (measurement file or prepared file)
             ddata, sheet_select = self.load_O2data()
@@ -749,10 +752,30 @@ class o2Page(QWizardPage):
 
         elif self.count == 1:
             # update subtitle for progress report
-            self.setSubTitle("Depth correction (SWE) done.  Continue with calibration.")
+            self.setSubTitle("Depth correction (SWI) done.  Now,  continue with calibration.")
 
             # get user input on calibration - convert O2 potential into concentration
             self.User4Calibration()
+
+    def continue_processI(self):
+        # possible responses include either "core" or only the number -> find pattern with re
+        dO2_core.update(dbs.O2calc4conc_one4all(core_sel=int(core_select), lim_min=lim_min, lim=lim,
+                                                o2_dis=self.o2_dis, unit='µmol/l',
+                                                data_shift=self.ddata_shift[self.ls_colname[-1]]))
+        results['O2 profile'] = dO2_core
+
+        # define for output metadata
+        self.typeCalib = 'recalibration one core ' + str(core_select) + ' to all'
+
+        # continue with the process - first execute without any click
+        self.continue_button.disconnect()
+        self.continue_button.clicked.connect(self.continue_processII)
+
+        # continue with the process - first execute without any click
+        self.continue_processII()
+        # update process that shall be executed when button is clicked
+        self.continue_button.disconnect()
+        self.continue_button.clicked.connect(self.continue_processII)
 
     def continue_processII(self):
         if self.count == 1:
@@ -1039,7 +1062,7 @@ class FitWindow(QDialog):
         # add description about how to use this window (slider, outlier detection, cropping area)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
                           "following options to improve the fit: \n- Trim fit range: press CONTROL/COMMAND + select "
-                          "min/max \n- Remove outliers: press SHIFT + select individual points \n\nAt the end, update"
+                          "min/max \n- Remove outliers: press SHIFT + select individual points \n\nAt the end,  update"
                           " the fit by pressing the button UPDATE FIT")
 
         self.msg.setWordWrap(True)
@@ -1280,6 +1303,71 @@ class FitWindow(QDialog):
     def save_fit(self):
         # !!! TODO: enable saving of fit figures
         print('enable saving of the fit figures')
+
+
+class CalibCore(QDialog):
+    def __init__(self, ls_core):
+        super().__init__()
+
+        # setting title
+        self.setWindowTitle("Core selection ")
+        self.setGeometry(100, 100, 350, 100)
+
+        # getting the parameter
+        self.ls_core = ls_core
+
+        # calling method
+        self.initUI()
+
+        # connect checkbox and load file button with a function
+        self.ok_button.clicked.connect(self.close)
+
+        # showing all the widgets
+        self.show()
+
+    # method for widgets
+    def initUI(self):
+        # calibration of one core applied to all others -> select core
+        self.combo_box = QComboBox(self)
+
+        self.ok_button = QPushButton('OK', self)
+        self.ok_button.setFixedWidth(100)
+
+        # core list
+        core_str = ['core ' + str(i) for i in sorted(self.ls_core)]
+        self.combo_box.addItems(core_str)
+        self.combo_box.setEditable(True)
+        self.combo_box.setInsertPolicy(QComboBox.InsertAlphabetically)
+
+        # creating label to  print the policy
+        label = QLabel("Select core that shall be used for recalibration:", self)
+        label.setWordWrap(True)
+
+        # creating window layout
+        mlayout2 = QVBoxLayout()
+        vbox2 = QHBoxLayout()
+        mlayout2.addLayout(vbox2)
+
+        # add items to the layout grid
+        MsgGp = QGroupBox()
+        MsgGp.setFont(QFont('Helvetica Neue', 12))
+        gridMsg = QGridLayout()
+        vbox2.addWidget(MsgGp)
+        MsgGp.setLayout(gridMsg)
+
+        # add GroupBox to layout and load buttons in GroupBox
+        gridMsg.addWidget(label, 0, 0)
+        gridMsg.addWidget(self.combo_box, 0, 1)
+        gridMsg.addWidget(self.ok_button, 1, 1)
+
+        # add everything to the window layout
+        self.setLayout(mlayout2)
+
+    def close(self):
+        global core_select
+        core_select = int(self.combo_box.currentText().split(' ')[1])
+        print(1362, core_select)
+        self.hide()
 
 
 def figures4saving(ls_core, ddata_shift=None, ddcore=None, dfit=None, deriv=None, dcore_pen=None):
@@ -1588,7 +1676,7 @@ class phPage(QWizardPage):
 
         self.setTitle("pH depth profile")
         self.setSubTitle("Initially,  the pH profile will be plotted without any depth correction. "
-                         "\nIt can be adjusted later.  Press PLOT to start.")
+                         "\nHowever, it can be adjusted later.  Press PLOT to start.")
         self.initUI()
 
         # connect checkbox and load file button with a function
@@ -1711,6 +1799,9 @@ class phPage(QWizardPage):
         results['pH raw data'] = self.dpH_core
 
     def continue_pH(self):
+        self.setSubTitle("Now,  the SWI can be set.  Either choose the depth determined in the O2 project,  or set "
+                         "your own depth wisely.  Press PLOT to continue.")
+
         # set status for process control
         self.status_pH = 0
 
@@ -1843,7 +1934,7 @@ class phPage(QWizardPage):
 
             # update plot according to selected core
             scale_plot = self.scale0 if len(scalepH) == 0 or self.status_pH == 0 else scalepH
-            ls = '-.' if self.status_pH == 0 else '-'
+            ls = '-.' if self.status_pH <= 2 else '-'
             figpH0 = plot_pHProfile(data_pH=self.dpH_core, core=core_select, ls_core=self.ls_core, scale=scale_plot,
                                     ls=ls, fig=self.figpH, ax=self.axpH)
             self.figpH.canvas.draw()
@@ -1862,6 +1953,9 @@ class phPage(QWizardPage):
         print('TODO: implement pH saving')
 
     def reset_pHpage(self):
+        self.setSubTitle("Initially,  the pH profile will be plotted without any depth correction. "
+                         "\nHowever, it can be adjusted later.  Press PLOT to start.")
+
         # update status for process control
         self.status_pH = 0
         self.scale, scalepH = None, list()
@@ -4157,7 +4251,7 @@ class SalConvWindowO2(QDialog):
 
         # add description about how to use this window (slider, outlier detection, trim range)
         self.msg = QLabel("Required information:  pressure in bar and the conductivity in S/m")
-        self.msg.setWordWrap(True), self.msg.setFont(QFont('Helvetica Neue', int(fs_font*1.15)))
+        self.msg.setWordWrap(True), self.msg.setFont(QFont('Helvetica Neue'))
 
         # input
         cnd_label, cnd_unit_label = QLabel(self), QLabel(self)
