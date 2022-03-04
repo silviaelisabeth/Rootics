@@ -890,8 +890,8 @@ class o2Page(QWizardPage):
             dbs.save_rawExcel(dout=dout, file=self.field("Data"), savePath=self.field("Storage path"))
 
     def save_figdepth(self, save_path, dfigBase):
-        if not os.path.exists(save_path + 'DepthProfile/'):
-            os.makedirs(save_path + 'DepthProfile/')
+        if not os.path.exists(save_path + 'O2_DepthProfile/'):
+            os.makedirs(save_path + 'O2_DepthProfile/')
         for f in dfigBase.keys():
             for t in ls_figtype:
                 name = save_path + 'DepthProfile/' + 'Depthprofile_core-{}_SWI_corrected.'.format(f) + t
@@ -3600,7 +3600,7 @@ class epPage(QWizardPage):
 
     def continue_EP(self):
         # set status for process control
-        self.status_EP = 0
+        self.status_EP = 1
 
         # update instruction
         self.setSubTitle("Now,  the surface water interface can now be corrected. In case the O2 project was assessed "
@@ -3615,10 +3615,10 @@ class epPage(QWizardPage):
                                               for n in self.dEP_core[c].keys()]) for c in self.dEP_core.keys()])
         self.scale0 = dfEP_scale[0].min(), dfEP_scale[1].max()
         # use self.scale0 for the initial plot but make it possible to update self.scale
-        self.scale = self.scale0
+        self.scale = self.scale0 if len(scaleEP) == 0 else scaleEP
 
         # plot the pH profile for the first core
-        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core), scale=self.scale0,
+        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core), scale=self.scale,
                                     ls_core=self.ls_core, col_name='EP_mV', dobj_hidEP=dobj_hidEP, fig=self.figEP,
                                     ax=self.axEP)
         # slider initialized to first core
@@ -3656,16 +3656,20 @@ class epPage(QWizardPage):
             dfEP_scale = pd.concat([pd.DataFrame([(data[c][n]['EP_mV'].min(), data[c][n]['EP_mV'].max())
                                                   for n in data[c].keys()]) for c in data.keys()])
             scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
-            self.scale = scale_plot
+            self.scale = scale_plot if len(scaleEP) == 0 else scaleEP
+
             ls = '-.' if self.status_EP == 0 else '-'
             figEP0 = plot_initalProfile(data=data, para='EP', unit='mV', col_name='EP_mV', core=core_select,
-                                        ls_core=self.ls_core, scale=scale_plot, ls=ls, dobj_hidEP=dobj_hidEP,
+                                        ls_core=self.ls_core, scale=self.scale, ls=ls, dobj_hidEP=dobj_hidEP,
                                         fig=self.figEP, ax=self.axEP)
             self.figEP.canvas.draw()
 
     def continue_EPII(self):
         # update status for process control
-        self.status_EP += 1
+        if self.swiEP_box.isChecked():
+            self.status_EP += 1
+        else:
+            self.status_EP += 0.01
 
         # identify closest value in list
         core_select = closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
@@ -3778,11 +3782,14 @@ class epPage(QWizardPage):
                     xnew = [i - dpen_av[c]['Depth (µm)'] for i in self.data[c][s].index]
                     self.data[c][s].index = xnew
 
-            results['EP swi adjusted'] = self.data
+        results['EP swi adjusted'] = self.data
 
     def continue_EPIII(self):
         # update status for process control
-        self.status_EP += 1
+        if self.swiEP_box.isChecked():
+            self.status_EP += 1
+        else:
+            self.status_EP += .01
 
         # identify closest value in list
         core_select = closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
@@ -3829,7 +3836,37 @@ class epPage(QWizardPage):
             wAdjustEP.show()
 
     def save_EP(self):
-        print('TODO: implement EP saving')
+        # define teh type of EP data that shall be plotted (depending on the status)
+        if 'EP swi depth' in results.keys():
+            data = results['EP swi adjusted']
+            name_ = 'SWI_corrected.'
+        elif 'EP drift corrected' in results.keys():
+            data = results['EP drift corrected']
+            name_ = 'DriftCorrected.'
+        elif 'EP raw data' in results.keys():
+            data = results['EP raw data']
+            name_ = 'rawData.'
+        else:
+            data = None
+
+        ls = '-.' if self.status_EP == 1 else '-'
+        scale_plot = self.scale if len(scaleEP) == 0 else scaleEP
+        # replot data but do not show them. store in figure dictionary
+        dfigEP = dict()
+        for c in self.ls_core:
+            if c in data.keys():
+                dfigEP[c] = plot_initalProfile(data=data, para='EP', unit='mV', col_name='EP_mV', core=c, ls=ls,
+                                               ls_core=self.ls_core, scale=scale_plot, dobj_hidEP=dobj_hidEP,
+                                               show=False)
+
+        save_path = self.field("Storage path") + '/Graphs/'
+        if not os.path.exists(save_path + 'EP_Profile/'):
+            os.makedirs(save_path + 'EP_Profile/')
+        for f in dfigEP.keys():
+            for t in ls_figtype:
+                name = save_path + 'EP_Profile/' + 'EPprofile_core-{}_'.format(f) + name_ + t
+                dfigEP[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
+
 
     def reset_EPpage(self):
         # update status for process control
@@ -4158,8 +4195,9 @@ class AdjustpHWindowEP(QDialog):
         self.hide()
 
 
-def plot_initalProfile(data, para, unit, col_name, core, ls_core, scale, dobj_hidEP, ls='-.', fig=None, ax=None):
-    ax.cla()
+def plot_initalProfile(data, para, unit, col_name, core, ls_core, scale, dobj_hidEP, ls='-.', fig=None, ax=None,
+                       show=True):
+    plt.ioff()
     lines = list()
     # identify closest value in list
     core_select = closest_core(ls_core=ls_core, core=core)
@@ -4240,10 +4278,12 @@ def plot_initalProfile(data, para, unit, col_name, core, ls_core, scale, dobj_hi
         fig.canvas.mpl_connect('pick_event', onpick)
 
     # update layout
-    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
-    ax.set_xlim(scale_min, scale[1]*1.015)
+    ax.set_xlim(scale[0]*0.985, scale[1]*1.015)
     fig.tight_layout(pad=1.5)
-    fig.canvas.draw()
+    if show is True:
+        fig.canvas.draw()
+    else:
+        plt.close()
     return fig
 
 
@@ -4477,3 +4517,5 @@ if __name__ == '__main__':
     # show wizard
     Wizard.show()
     sys.exit(app.exec_())
+
+#%
