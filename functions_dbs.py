@@ -452,7 +452,6 @@ def _loadFile4GUI(file):
     # load profiles for each sensor
     dsens = dict(map(lambda i: (i, profileSensor(df_profile=df_excel['Profiles'], ls_analytes=ls_analytes,
                                                  ID=int(i.split(' ')[-1]))), ls))
-
     # split profiles into different samples / cores and find the name for the excel sheet "analyte_all"
     dout = dict(map(lambda s: (dsens[s][0] + '_all', _split2Samples(dsens=dsens, df_meta=df_meta, s=s)), ls))
 
@@ -590,7 +589,6 @@ def profileSensor(df_profile, ls_analytes, ID):
         end_ = ls_sens[ID][0]
     else:
         end_ = None
-
     return ls_analytes[ID-1], df_profile[lsColAll[ls_sens[ID-1][0]:end_]].T.set_index(0).T
 
 
@@ -605,12 +603,16 @@ def _split2Samples(dsens, df_meta, s):
 
     # make time the index to sort
     dsamples = dict()
-    for n in range(len(lsPosNaT)-1):
+    for n in range(len(lsPosNaT)+1):
         if n == 0:
             start = None
+            stop = lsPosNaT[n]
+        elif n == len(lsPosNaT):
+            start = lsPosNaT[-1]+1
+            stop = None
         else:
             start = lsPosNaT[n-1]+1
-        stop = lsPosNaT[n]
+            stop = lsPosNaT[n]
         dsamples['Nr ' + str(n+1)] = dsens[s][1].loc[start:stop].set_index('Time')
 
     # rename the columns to include the analyte

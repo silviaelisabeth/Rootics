@@ -3576,7 +3576,7 @@ class epPage(QWizardPage):
             # old version with pre-processed files:
             dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
 
-        # pre-check whether pH_all in sheet names
+        # pre-check whether EP_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='EP')
 
         # !!! TODO: field("SoftwareFile") might be depreciated in the future
@@ -3618,7 +3618,7 @@ class epPage(QWizardPage):
         self.scale = self.scale0 if len(scaleEP) == 0 else scaleEP
 
         # plot the pH profile for the first core
-        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core), scale=self.scale,
+        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core),
                                     ls_core=self.ls_core, col_name='EP_mV', dobj_hidEP=dobj_hidEP, fig=self.figEP,
                                     ax=self.axEP)
         # slider initialized to first core
@@ -3653,15 +3653,14 @@ class epPage(QWizardPage):
 
             # update plot according to selected data set and core
             data = self.dEP_corr if 'EP drift corrected' in results.keys() else self.dEP_core
-            dfEP_scale = pd.concat([pd.DataFrame([(data[c][n]['EP_mV'].min(), data[c][n]['EP_mV'].max())
-                                                  for n in data[c].keys()]) for c in data.keys()])
-            scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
-            self.scale = scale_plot if len(scaleEP) == 0 else scaleEP
+            # dfEP_scale = pd.concat([pd.DataFrame([(data[c][n]['EP_mV'].min(), data[c][n]['EP_mV'].max())
+            #                                       for n in data[c].keys()]) for c in data.keys()])
+            # scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
+            # self.scale = scale_plot if len(scaleEP) == 0 else scaleEP
 
             ls = '-.' if self.status_EP == 0 else '-'
             figEP0 = plot_initalProfile(data=data, para='EP', unit='mV', col_name='EP_mV', core=core_select,
-                                        ls_core=self.ls_core, scale=self.scale, ls=ls, dobj_hidEP=dobj_hidEP,
-                                        fig=self.figEP, ax=self.axEP)
+                                        ls_core=self.ls_core, ls=ls, dobj_hidEP=dobj_hidEP, fig=self.figEP, ax=self.axEP)
             self.figEP.canvas.draw()
 
     def continue_EPII(self):
@@ -3687,7 +3686,7 @@ class epPage(QWizardPage):
         self.scale = scale_plot
         # scale_plot = self.scale0 if len(scaleEP) == 0 else scaleEP
         figEP0 = plot_initalProfile(data=self.dEP_corr, para='EP', unit='mV', col_name='EP_mV', core=core_select,
-                                    ls_core=self.ls_core, scale=scale_plot, ls='-', dobj_hidEP=dobj_hidEP,
+                                    ls_core=self.ls_core, ls='-', dobj_hidEP=dobj_hidEP,
                                     fig=self.figEP, ax=self.axEP)
         self.figEP.canvas.draw()
 
@@ -3806,7 +3805,7 @@ class epPage(QWizardPage):
         scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
         self.scale = scale_plot
         figEP0 = plot_initalProfile(data=self.data, para='EP', unit='mV', col_name='EP_mV', core=core_select,
-                                    ls_core=self.ls_core, scale=scale_plot, ls='-', dobj_hidEP=dobj_hidEP,
+                                    ls_core=self.ls_core, ls='-', dobj_hidEP=dobj_hidEP,
                                     fig=self.figEP, ax=self.axEP)
         self.figEP.canvas.draw()
 
@@ -3850,14 +3849,12 @@ class epPage(QWizardPage):
             data = None
 
         ls = '-.' if self.status_EP == 1 else '-'
-        scale_plot = self.scale if len(scaleEP) == 0 else scaleEP
-        # replot data but do not show them. store in figure dictionary
+        # re-plot data but do not show them. store in figure dictionary
         dfigEP = dict()
         for c in self.ls_core:
             if c in data.keys():
                 dfigEP[c] = plot_initalProfile(data=data, para='EP', unit='mV', col_name='EP_mV', core=c, ls=ls,
-                                               ls_core=self.ls_core, scale=scale_plot, dobj_hidEP=dobj_hidEP,
-                                               show=False)
+                                               ls_core=self.ls_core, dobj_hidEP=dobj_hidEP, fs_=7, show=False)
 
         save_path = self.field("Storage path") + '/Graphs/'
         if not os.path.exists(save_path + 'EP_Profile/'):
@@ -3866,7 +3863,6 @@ class epPage(QWizardPage):
             for t in ls_figtype:
                 name = save_path + 'EP_Profile/' + 'EPprofile_core-{}_'.format(f) + name_ + t
                 dfigEP[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
-
 
     def reset_EPpage(self):
         # update status for process control
@@ -4183,7 +4179,7 @@ class AdjustpHWindowEP(QDialog):
         #  update range for pH plot and plot in main window
         self.EPtrim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
         fig0 = plot_initalProfile(data=self.ddata, para='EP', unit='mV', col_name='EP_mV', core=self.Core, ls=self.ls,
-                                  ls_core=self.ddata.keys(), scale=self.scale, dobj_hidEP=dobj_hidEP, fig=self.figEP,
+                                  ls_core=self.ddata.keys(), dobj_hidEP=dobj_hidEP, fig=self.figEP,
                                   ax=self.axEP)
         self.figEP.canvas.draw()
         self.status_EP += 1
@@ -4195,7 +4191,7 @@ class AdjustpHWindowEP(QDialog):
         self.hide()
 
 
-def plot_initalProfile(data, para, unit, col_name, core, ls_core, scale, dobj_hidEP, ls='-.', fig=None, ax=None,
+def plot_initalProfile(data, para, unit, col_name, core, ls_core, dobj_hidEP, ls='-.', fs_=10, fig=None, ax=None,
                        show=True):
     plt.ioff()
     lines = list()
@@ -4225,7 +4221,7 @@ def plot_initalProfile(data, para, unit, col_name, core, ls_core, scale, dobj_hi
             line, = ax.plot(data[core_select][nr][col_name], data[core_select][nr].index, lw=lw, ls=ls, marker=mark,
                             alpha=alpha_, color=ls_col[en], label='sample ' + str(nr))
             lines.append(line)
-        leg = ax.legend(frameon=True, fontsize=10)
+        leg = ax.legend(frameon=True, fontsize=fs_)
 
         # ------------------------------------------------------------------
         # combine legend
@@ -4278,8 +4274,11 @@ def plot_initalProfile(data, para, unit, col_name, core, ls_core, scale, dobj_hi
         fig.canvas.mpl_connect('pick_event', onpick)
 
     # update layout
-    ax.set_xlim(scale[0]*0.985, scale[1]*1.015)
+    min_ = np.min([data[core_select][nr][col_name].min() for nr in data[core_select].keys()])
+    max_ = np.max([data[core_select][nr][col_name].max() for nr in data[core_select].keys()])
+    ax.set_xlim(min_*0.985, max_*1.015)
     fig.tight_layout(pad=1.5)
+
     if show is True:
         fig.canvas.draw()
     else:
@@ -4339,8 +4338,8 @@ def GUI_adjustDepthEP(core, nr, dfCore, scale, col, fig=None, ax=None, show=True
 
     # general layout
     scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
-    ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
-    sns.despine(), fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.215)
+    #ax.set_xlim(scale_min, scale[1]*1.015)
+    ax.invert_yaxis(), sns.despine(), fig.subplots_adjust(bottom=0.2, right=0.95, top=0.8, left=0.215)
 
     if show is False:
         plt.close(fig)
