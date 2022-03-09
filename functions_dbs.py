@@ -431,11 +431,14 @@ def _loadFile4GUI(file):
     df_excel = pd.read_excel(file, sheet_name=None)
 
     # import meta data and pre-check whether file contains metadata - if not, return warning
-    if 'Metadata' not in df_excel.keys():
-        if 'metadata' not in df_excel.keys():
-            #!!!TODO: have it as a try function - in case open an additional window
-            print('WARNING - metadata required')
-    df_meta = df_excel['Metadata'].set_index(['deployment', 'code'])
+    if 'Metadata' in df_excel.keys():
+        col = 'Metadata'
+    elif 'metadata' in df_excel.keys():
+        col = 'metadata'
+    else:
+        #!!!TODO: have it as a try function - in case open an additional window
+        print('WARNING - metadata required')
+    df_meta = df_excel[col].set_index(['deployment', 'code'])
     df_meta = df_meta.T.dropna().T
 
     # split profiles into sensors
@@ -486,7 +489,7 @@ def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, s
         # only potential data 'O2_mV'
         ddata = results['O2 SWI corrected']['O2_mV']
         for c in ddata.keys():
-            # t either µmol/l or mV
+            # t either µmol/L or mV
             df = pd.concat([ddata[c][s] for s in ddata[c].keys()], axis=1)
             df.columns = ddata[c].keys()
             dcore_swi[c] = df
@@ -743,7 +746,7 @@ def penetration_depth(df, unit, O2_pen, steps, model):
 
     # initial parameters
     para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=-.0001, c=0.002)
-    res = model.fit(ydata, para, x=xdata)
+    res = model.fit(ydata.to_numpy(), para, x=xdata)
 
     # ................................................................
     # 1st derivative
@@ -775,6 +778,7 @@ def findPotentialLimits(df, lim, lim_min):
     dpot = dict()
     for s in df.keys():
         # maximal O2 concentration - potential for selected core
+        df[s] = pd.DataFrame(df[s]).astype(float)
         idxmax = df[s].idxmax()[0]
         if len(df[s].loc[idxmax - lim:idxmax + lim]) < 3:
             lim = 200
@@ -802,36 +806,10 @@ def findPotentialLimits(df, lim, lim_min):
     return pot_av
 
 
-def O2converter4conc(data_shift, o2_dis, lim, lim_min, unit):
+def O2converter4conc(data_shift, o2_dis, lim_min, lim, unit):
     dO2_core = dict()
     for core in data_shift.keys():
-        # find minimal and maximal potential for each sample of the core
-        # dpot = dict()
-        # for s in data_shift[core].keys():
-        #     # maximal O2 concentration - potential
-        #     idxmax = data_shift[core][s].idxmax()[0]
-        #     if len(data_shift[core][s].loc[idxmax-lim:idxmax+lim]) < 3:
-        #         print('WARNING - less than 3 points to average maximal potential')
-        #         lim = 200
-        #     pot_max = (data_shift[core][s].loc[idxmax-lim:idxmax+lim].mean()[0],
-        #                data_shift[core][s].loc[idxmax-lim:idxmax+lim].std()[0])
-        #
-        #     # minimal O2 concentration - potential
-        #     idxmin = data_shift[core][s].idxmin()[0]
-        #     if len(data_shift[core][s].loc[idxmin-lim:idxmin+lim]) < 3:
-        #         print('WARNING - less than 3 points to average minimal potential')
-        #         lim = 200
-        #     pot_min = (data_shift[core][s].loc[idxmin-lim:idxmin+lim].mean()[0],
-        #                data_shift[core][s].loc[idxmin-lim:idxmin+lim].std()[0])
-        #
-        #     pot_o2 = pd.DataFrame([pot_max, pot_min], columns=['mean', 'std'], index=['max', 'min'])
-        #     dpot[s] = pot_o2
-        #
-        # # min/max potential averaged
-        # pot_av = pd.concat([pd.DataFrame(pd.concat(dpot).T.filter(like='max').mean(axis=1)),
-        #                     pd.DataFrame(pd.concat(dpot).T.filter(like='min').mean(axis=1))], axis=1)
-        # pot_av.columns = ['max', 'min']
-
+        # find minimal and maximal potential for all samples of the core
         pot_av = findPotentialLimits(df=data_shift[core], lim=lim, lim_min=lim_min)
 
         # linear calibration (2-point) for this core
@@ -860,7 +838,7 @@ def O2calc4conc_one4all(core_sel, data_shift, o2_dis, lim, lim_min, unit):
     return do2_core
 
 
-def O2rearrange(df, unit='µmol/l'):
+def O2rearrange(df, unit='µmol/L'):
     dO2_core = dict()
     for core in df.keys():
         d = pd.concat(df[core], axis=1)
@@ -919,12 +897,12 @@ def dissolvedO2_calc(T, salinity):
     taylor = np.exp(pdO2['A1'] + pdO2['A2'] * convF + pdO2['A3'] * np.log(1 / convF) + pdO2['A4'] * (1 / convF) +
                     salinity * (pdO2['B1'] + pdO2['B2'] * (1 / convF) + pdO2['B3'] * (1 / convF) ** 2))
 
-    # maximal dissolved O2 in µmol/l for a given temperature and salinity
+    # maximal dissolved O2 in µmol/L for a given temperature and salinity
     dO2_max = taylor / (pdO2['R'] * 273.15) * 1000  # µM
     return (0, dO2_max)
 
 
-def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µmol/l', lim=150, steps=0.5,
+def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µmol/L', lim=150, steps=0.5,
                     plot_inter=False):
     """
 
@@ -973,7 +951,7 @@ def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µm
     o2_dis = defO2calib(dtab_sal=dtab_sal, unit=unit, temp=temp_degC, sal=salinity)
 
     # convert O2 potential into concentration
-    dO2_core = O2converter4conc(data_shift, o2_dis, lim, unit)
+    dO2_core = O2converter4conc(data_shift, o2_dis, unit)
 
     # -----------------------------------------------------------------------------------
     # penetration depth

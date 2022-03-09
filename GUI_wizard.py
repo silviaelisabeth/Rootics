@@ -13,20 +13,20 @@ This notice may not be removed or altered from any distribution.
 
 from PyQt5 import QtCore, QtWidgets
 from PyQt5 import QtGui
-import qtawesome as qta
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                              QLineEdit, QDialog, QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget, QWizard,
                              QWizardPage, QInputDialog, QMainWindow)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import *
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT, FigureCanvasQTAgg
+import qtawesome as qta
 import numpy as np
 import seaborn as sns
 import pandas as pd
 from lmfit import Model
 import os
 import re
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT, FigureCanvasQTAgg
 
 import functions_dbs as dbs
 import function_salinity as sal
@@ -47,10 +47,18 @@ fs_font = 10
 # plot style / layout
 sns.set_context('paper'), sns.set_style('ticks')
 
-# global variables
-dobj_hid, dobj_hidEP, dpen_glob, dO2_core, results, dout = dict(), dict(), dict(), dict(), dict(), dict()
-scalepH, scaleh2s, scaleEP = list(), list(), list()
+# global variables for individual projects
+results, dout = dict(), dict()
+
+# O2 project
 core_select, userCal, ret = None, None, None
+dobj_hid, dO2_core, dpen_glob = dict(), dict(), dict()
+# pH project
+scalepH = list()
+# H2S project
+scaleh2s = list()
+# EP project
+dobj_hidEP, scaleEP = dict(), list()
 
 # wizard architecture - how are the pages arranged?
 wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "epPage": 4, "charPage": 5}
@@ -111,7 +119,6 @@ class IntroPage(QWizardPage):
         self.setTitle("InfoPage")
         self.setSubTitle("Enter the path to your measurement file and select which of the parameters should be "
                          "analyzed.\nWe will then guide you through the analysis.\n")
-
         # create layout
         self.initUI()
 
@@ -429,13 +436,13 @@ class o2Page(QWizardPage):
         temperature_label.setText('Temperature'), temperature_unit_label.setText('degC')
         self.temperature_edit = QLineEdit(self)
         self.temperature_edit.setValidator(QDoubleValidator()), self.temperature_edit.setAlignment(Qt.AlignRight)
-        self.temperature_edit.setText('13.2')
+        self.temperature_edit.setText(str(results['temperature degC']))
 
         salinity_label, salinity_unit_label = QLabel(self), QLabel(self)
         salinity_label.setText('Salinity'), salinity_unit_label.setText('PSU')
         self.salinity_edit = QLineEdit(self)
         self.salinity_edit.setValidator(QDoubleValidator()), self.salinity_edit.setAlignment(Qt.AlignRight)
-        self.salinity_edit.setText('0.')
+        self.salinity_edit.setText(str(results['salinity PSU']))
 
         pene2_label, pene2_unit_label = QLabel(self), QLabel(self)
         pene2_label.setText('Sensor LoD'), pene2_unit_label.setText('µmol/l')
@@ -623,6 +630,13 @@ class o2Page(QWizardPage):
                 except:
                     userCal, ret = QMessageBox.No, 1
                     wCore = CalibCore(self.ls_core)
+                    if core_select:
+                        wCore.hide()
+                        # continue with the process - first execute without any click
+                        self.continue_processI()
+                        # update process that shall be executed when button is clicked
+                        self.continue_button.disconnect()
+                        self.continue_button.clicked.connect(self.continue_processI)
 
     def load_O2data(self):
         # load excel sheet with all measurements
@@ -968,10 +982,29 @@ class o2Page(QWizardPage):
             pass
 
     def reset_o2page(self):
-        global core_select, userCal, ret
-        core_select, userCal, ret = None, None, None
+        global core_select, userCal, ret, dpen_glob
+        core_select, userCal, ret, dpen_glob = None, None, None, dict()
 
-        self.salinity_edit.setText('0.')
+        # empty results
+        if 'O2 profile' in results.keys():
+            results.pop('O2 profile')
+        if 'O2 raw data' in results.keys():
+            results.pop('O2 raw data')
+        if 'O2 fit' in results.keys():
+            results.pop('O2 fit')
+            results.pop('O2 derivative')
+        if 'O2 SWI corrected' in results.keys():
+            results.pop('O2 SWI corrected')
+        if 'O2 profile' in results.keys():
+            results.pop('O2 profile')
+        if 'O2 penetration depth' in results.keys():
+            results.pop('O2 penetration depth')
+        if 'O2 hidden objects' in results.keys():
+            results.pop('O2 hidden objects')
+
+        self.salinity_edit.setText(str(results['salinity PSU']))
+        self.temperature_edit.setText(str(results['temperature degC']))
+
         if self.count != 0:
             self.setSubTitle("Start all over again. New attempt, new chances. \nLoad calibration, update parameters if "
                              "required, and press CONTINUE. \n")
@@ -1081,7 +1114,7 @@ class FitWindow(QDialog):
         self.sld1_label.setText('sample: --')
 
         self.chi2_bx = QLabel(self)
-        self.chi2_bx.setFixedWidth(100)
+        self.chi2_bx.setFixedWidth(75)
         self.chi2 = QLabel()
         self.chi2.setText('Goodness of fit (reduced χ2): --')
         self.chi2.setAlignment(Qt.AlignLeft)
@@ -1103,6 +1136,7 @@ class FitWindow(QDialog):
         self.ax1Fit = self.axFit.twinx()
         self.figFit.set_facecolor("none")
         self.canvasFit = FigureCanvasQTAgg(self.figFit)
+        self.naviFit = NavigationToolbar2QT(self.canvasFit, self)
         self.axFit.set_xlabel('Depth / µm'), self.axFit.set_ylabel('O2 / mV')
         self.ax1Fit.set_ylabel('1st derivative', color='#0077b6')
 
@@ -1125,7 +1159,7 @@ class FitWindow(QDialog):
         # in-between for chi-2
         ChiGp = QGroupBox()
         ChiGp.setFont(QFont('Helvetica Neue', 12))
-        # ChiGp.setMinimumWidth(300)
+        ChiGp.setFixedHeight(50)
         gridChi = QGridLayout()
         vbox2_middle.addWidget(ChiGp)
         ChiGp.setLayout(gridChi)
@@ -1137,8 +1171,7 @@ class FitWindow(QDialog):
         # middle part
         FitGp = QGroupBox("Sigmoidal fit and 1st derivative")
         FitGp.setFont(QFont('Helvetica Neue', 12))
-        # FitGp.setMinimumWidth(300), \
-        FitGp.setMinimumHeight(300)
+        FitGp.setMinimumWidth(350), FitGp.setMinimumHeight(450)
         gridFit = QGridLayout()
         vbox2_middle1.addWidget(FitGp)
         FitGp.setLayout(gridFit)
@@ -1147,6 +1180,7 @@ class FitWindow(QDialog):
         gridFit.addWidget(self.slider1, 1, 0)
         gridFit.addWidget(self.sld1_label, 1, 1)
         gridFit.addWidget(self.canvasFit, 2, 0)
+        gridFit.addWidget(self.naviFit, 3, 0)
 
         # bottom part
         BtnGp = QGroupBox()
@@ -1391,7 +1425,6 @@ def figures4saving(ls_core, ddata_shift=None, ddcore=None, dfit=None, deriv=None
 
 
 def plot_Fitselect(core, sample, dfCore, dfFit, dfDeriv, fig, ax, ax1):
-    # initialize first plot with first core and sample
     fig3 = GUI_FitDepth(core=core, nr=sample, dfCore=dfCore, dfFit=dfFit, dfDeriv=dfDeriv, fig=fig, ax=ax, ax1=ax1)
     fig3.canvas.draw()
     return fig3
@@ -1412,7 +1445,7 @@ def plot_FitUpdate(core, nr, dic_dcore, dfit, dic_deriv, fig, ax, ax1):
 
     # text annotation to indicate depth correction
     text = 'surface level \nat {:.1f}µm'
-    ax.text(dic_dcore['O2_mV'].index[0] * 0.95, dic_dcore['O2_mV'].max() * 0.15,
+    ax.text(dic_dcore['O2_mV'].index[-1] * 0.6, dic_dcore['O2_mV'].max() * 0.5,
             text.format(dic_deriv.idxmin().values[0]), ha="left", va="center", color='k', size=9.5,
             bbox=dict(fc='lightgrey', alpha=0.25))
 
@@ -1445,14 +1478,14 @@ def GUI_FitDepth(core, nr, dfCore, dfFit, dfDeriv, fig=None, ax=None, ax1=None, 
 
     # text annotation for sediment water interface depth correction
     text = 'surface level \nat {:.1f}µm'
-    ax.text(dfCore[nr]['O2_mV'].index[0] * 0.95, dfCore[nr]['O2_mV'].max() * 0.15,
+    ax.text(dfCore[nr]['O2_mV'].index[-1] * 0.6, dfCore[nr]['O2_mV'].max() * 0.5,
             text.format(dfDeriv[nr].idxmin().values[0]), ha="left", va="center", color='k', size=9.5,
             bbox=dict(fc='lightgrey', alpha=0.25))
 
     # general layout
     ax.set_xlim(dfCore[nr].index[0]*1.05, dfCore[nr].index[-1]*1.05)
-    sns.despine()
-    ax.spines['right'].set_visible(True), plt.tight_layout(pad=1.)
+    sns.despine(), ax.spines['right'].set_visible(True)
+    plt.tight_layout(pad=1.)
 
     if show is False:
         plt.close(fig)
@@ -1956,6 +1989,20 @@ class phPage(QWizardPage):
         self.setSubTitle("Initially,  the pH profile will be plotted without any depth correction. "
                          "\nHowever, it can be adjusted later.  Press PLOT to start.\n")
 
+        global scalepH
+        scalepH = list()
+
+        if 'pH raw data' in results.keys():
+            results.pop('pH raw data')
+        if 'pH swi adjusted' in results.keys():
+            results.pop('pH swi adjusted')
+        if 'pH swi depth' in results.keys():
+            results.pop('pH swi depth')
+        if 'pH swi corrected' in results.keys():
+            results.pop('pH swi corrected')
+        if 'pH adjusted' in results.keys():
+            results.pop('pH adjusted')
+
         # update status for process control
         self.status_pH = 0
         self.scale, scalepH = None, list()
@@ -2397,7 +2444,7 @@ class h2sPage(QWizardPage):
         tempC_label.setText('Temperature'), tempC_unit_label.setText('degC')
         self.tempC_edit = QLineEdit(self)
         self.tempC_edit.setValidator(QDoubleValidator()), self.tempC_edit.setAlignment(Qt.AlignRight)
-        self.tempC_edit.setMaximumWidth(100), self.tempC_edit.setText('13.2')
+        self.tempC_edit.setMaximumWidth(100), self.tempC_edit.setText(str(results['temperature degC']))
 
         sal_label, sal_unit_label = QLabel(self), QLabel(self)
         sal_label.setText('Salinity'), sal_unit_label.setText('PSU')
@@ -2635,12 +2682,15 @@ class h2sPage(QWizardPage):
         try:
             if 'correlation' in ddata_all.keys():
                 df_correl = ddata_all['correlation']
+            elif 'Correlation' in ddata_all.keys():
+                df_correl = ddata_all['Correlation']
             else:
                 df_correl = None
                 msgBox = QMessageBox()
                 msgBox.setIcon(QMessageBox.Warning)
-                msgBox.setText("Information missing how to correlate pH and H2S sensor profiles. Please add respective "
-                               "information in excel sheet labeled correlation.")
+                msgBox.setText("Information missing how to correlate pH and H2S sensor profiles.  In case the total "
+                               "sulfide shall be calculated, please add respective information in the excel sheet "
+                               "labeled correlation.")
                 msgBox.setFont(QFont('Helvetica Neue', 11))
                 msgBox.setWindowTitle("Warning")
                 msgBox.setStandardButtons(QMessageBox.Ok)
@@ -2798,14 +2848,15 @@ class h2sPage(QWizardPage):
                     ynew = self.data[core_select][s].index - float(self.swih2s_edit.text())
         else:
             dpenH2S_av = dict()
-            for c in results['O2 penetration depth'].keys():
-                ls = list()
-                [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
-                 if "penetration" in i]
-                l = pd.DataFrame([results['O2 penetration depth'][c][s]
-                                  for s in results['O2 penetration depth'][c].keys()
-                                  if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
-                dpenH2S_av[c] = l.mean()
+            if 'O2 penetration depth' in results.keys():
+                for c in results['O2 penetration depth'].keys():
+                    ls = list()
+                    [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
+                     if "penetration" in i]
+                    l = pd.DataFrame([results['O2 penetration depth'][c][s]
+                                      for s in results['O2 penetration depth'][c].keys()
+                                      if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
+                    dpenH2S_av[c] = l.mean()
 
             # SWI correction as for O2 project
             for c in self.data.keys():
@@ -2892,6 +2943,22 @@ class h2sPage(QWizardPage):
         print('TODO: implement H2S saving')
 
     def reset_H2Spage(self):
+        # reset global parameter
+        global scaleh2s
+        scaleh2s = list()
+
+        if 'H2S raw data' in results.keys():
+            results.pop('H2S raw data')
+        if 'pH - H2S correlation' in results.keys():
+            results.pop('pH - H2S correlation')
+        if 'H2S total sulfide' in results.keys():
+            results.pop('H2S total sulfide')
+        if 'H2S total sulfide swi corrected' in results.keys():
+            results.pop('H2S total sulfide swi corrected')
+        if 'H2S swi corrected' in results.keys():
+            results.pop('H2S swi corrected')
+
+
         # update status for process control
         self.status_h2s = 0
         self.scale, scaleh2s = None, list()
@@ -2927,7 +2994,7 @@ class h2sPage(QWizardPage):
 
         # empty figure
         self.axh2s.cla()
-        self.axh2s.set_xlabel('H2S / µmol/l'), self.axh2s.set_ylabel('Depth / µm')
+        self.axh2s.set_xlabel('H2S / µmol/L'), self.axh2s.set_ylabel('Depth / µm')
         self.axh2s.invert_yaxis()
         self.figh2s.subplots_adjust(bottom=0.2, right=0.95, top=0.9, left=0.15)
         sns.despine()
@@ -3024,7 +3091,7 @@ class AdjustpHWindowS(QDialog):
         self.figH2Ss, self.axH2Ss = plt.subplots(figsize=(3, 2))
         self.figH2Ss.set_facecolor("none")
         self.canvasH2Ss = FigureCanvasQTAgg(self.figH2Ss)
-        self.axH2Ss.set_xlabel('H2S / µmol/l'), self.axH2Ss.set_ylabel('Depth / µm')
+        self.axH2Ss.set_xlabel('H2S / µmol/L'), self.axH2Ss.set_ylabel('Depth / µm')
         self.axH2Ss.invert_yaxis()
         #self.figH2Ss.tight_layout(pad=0.5)
         self.figH2Ss.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15)
@@ -3317,7 +3384,7 @@ def plot_H2SProfile(data_H2S, core, ls_core, scale, col, ls='-.', fig=None, ax=N
         fig, ax = plt.subplots(figsize=(3, 4))
     else:
         ax.cla()
-    ax.set_xlabel('{} / µmol/l'.format(para.split('zero')[0].split('_')[0])), ax.set_ylabel('Depth / µm')
+    ax.set_xlabel('{} / µmol/L'.format(para.split('zero')[0].split('_')[0])), ax.set_ylabel('Depth / µm')
     ax.invert_yaxis()
 
     if core_select != 0:
@@ -3359,7 +3426,7 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1
     else:
         ax1 = None
     ax.title.set_text('H2S profile for core {} - sample {}'.format(core, nr))
-    ax.set_xlabel('H2S / µmol/l'), ax.set_ylabel('Depth / µm')
+    ax.set_xlabel('H2S / µmol/L'), ax.set_ylabel('Depth / µm')
 
     # plotting part
     ax.axhline(0, lw=.5, color='k')
@@ -3412,7 +3479,7 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, fig=Non
 
     if core != 0:
         ax.title.set_text('H2S profile for core {} - sample {}'.format(core, nr))
-        ax.set_ylabel('Depth / µm'), ax.set_xlabel('H2S / µmol/l')
+        ax.set_ylabel('Depth / µm'), ax.set_xlabel('H2S / µmol/L')
 
     # plotting part
     ax.axhline(0, lw=.5, color='k')
@@ -3550,7 +3617,6 @@ class epPage(QWizardPage):
         sns.despine()
 
         ep_group = QGroupBox("EP depth profile")
-        #ep_group.setMinimumWidth(200),\
         ep_group.setMinimumHeight(300)
         grid_ep = QGridLayout()
 
@@ -3599,12 +3665,12 @@ class epPage(QWizardPage):
         results['EP raw data'] = self.dEP_core
 
     def continue_EP(self):
+        # update instruction
+        self.setSubTitle("If the respective checkbox is toggled,  the sensor drift correction will be applied.  In "
+                         "addition,  the surface water interface can now be corrected. \n")
+
         # set status for process control
         self.status_EP = 1
-
-        # update instruction
-        self.setSubTitle("Now,  the surface water interface can now be corrected. In case the O2 project was assessed "
-                         "before,  you can either use the depth determined there, or use your own depth. \n")
 
         # load data
         self.load_EPdata()
@@ -3664,6 +3730,10 @@ class epPage(QWizardPage):
             self.figEP.canvas.draw()
 
     def continue_EPII(self):
+        # update instruction
+        self.setSubTitle("Now,  the surface water interface can be corrected.  In case the O2 project was assessed "
+                         "before,  you can either use the depth determined there,  or use your own depth. \n")
+
         # update status for process control
         if self.swiEP_box.isChecked():
             self.status_EP += 1
@@ -3784,6 +3854,10 @@ class epPage(QWizardPage):
         results['EP swi adjusted'] = self.data
 
     def continue_EPIII(self):
+        # update instruction
+        self.setSubTitle("Now,  the surface water interface can be corrected.  In case the O2 project was assessed "
+                         "before,  you can either use the depth determined there,  or use your own depth. \n")
+
         # update status for process control
         if self.swiEP_box.isChecked():
             self.status_EP += 1
@@ -3865,6 +3939,23 @@ class epPage(QWizardPage):
                 dfigEP[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
 
     def reset_EPpage(self):
+        # reset global parameter
+        global scaleEP, dobj_hidEP
+        dobj_hidEP, scaleEP = dict(), list()
+
+        if 'EP raw data' in results.keys():
+            results.pop('EP raw data')
+        if 'EP drift corrected' in results.keys():
+            results.pop('EP drift corrected')
+        if 'EP swi depth' in results.keys():
+            results.pop('EP swi depth')
+        if 'EP swi adjusted' in results.keys():
+            results.pop('EP swi adjusted')
+
+        self.setSubTitle("[Restart]  Press PLOT to start and display the initial EP profiles.  If a drift correction "
+                         "shall be included,  make sure to check the checkbox.  At any case,  the profile can be "
+                         "adjusted by trimming the depth range and removing outliers.")
+
         # update status for process control
         self.status_EP = 0
         dobj_hidEP.clear()
@@ -4274,8 +4365,8 @@ def plot_initalProfile(data, para, unit, col_name, core, ls_core, dobj_hidEP, ls
         fig.canvas.mpl_connect('pick_event', onpick)
 
     # update layout
-    min_ = np.min([data[core_select][nr][col_name].min() for nr in data[core_select].keys()])
-    max_ = np.max([data[core_select][nr][col_name].max() for nr in data[core_select].keys()])
+    min_ = np.min(scaleEP) if scaleEP else np.min([data[core_select][nr][col_name].min() for nr in data[core_select].keys()])
+    max_ = np.max(scaleEP) if scaleEP else np.max([data[core_select][nr][col_name].max() for nr in data[core_select].keys()])
     ax.set_xlim(min_*0.985, max_*1.015)
     fig.tight_layout(pad=1.5)
 
