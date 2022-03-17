@@ -375,35 +375,269 @@ def _gompertz_curve(x, a, b, c):
 
 
 # --------------------------------------------------------------------------------------------------------------------
+def loadMeas4GUI(file):
+    # load sheets from excel file
+    df_excel = pd.read_excel(file, sheet_name=None)
+
+    # identify sensors used
+    dfsens = df_excel['Sensors'][['Name', 'Unit']]
+
+    # check requirements for meta data and correlation (where applicable)
+    col = precheckMeta(ls_cols=df_excel.keys())
+    cols = precheckCorrelation(ls_cols=df_excel.keys())
+
+    # split full dataframe with all profiles into individual samples belonging to certain groups
+    dprof = loadProfile(dfsens=dfsens, dfprof=df_excel['Profiles'])
+
+    # additional prep to fit it to the previous version
+    dprof = prepAnalytes(dprof=dprof)
+
+    # split full dataset into individual profiles and label them according to sample ID and group (e.g. "core")
+    dprofiles = splitIntoSamples(dprof=dprof, df_meta=df_excel[col])
+
+    return dprofiles
+
+
+def precheckMeta(ls_cols):
+    # meta data sheet
+    if 'Metadata' not in ls_cols and 'metadata' not in ls_cols:
+        print('warning - include an additional metadata sheet as described in the manual.')
+        col = None
+    else:
+        col = 'Metadata' if 'Metadata' in ls_cols else 'metadata'
+    return col
+
+
+def precheckCorrelation(ls_cols):
+    # pH and H2S correlation sheet
+    if 'Correlation' not in ls_cols and 'correlation' not in ls_cols:
+        print('Warning - if total sulfide shall be calculated, profive an additional correlation sheet as described in '
+              'the manual.')
+        col = None
+    else:
+        col = 'Correlation' if 'Correlation' in ls_cols else 'correlation'
+    return col
+
+
+def splitIntoSamples(dprof, df_meta):
+    dprofiles = dict()
+    # split full dataset into individual profiles and label them according to sample ID and group (e.g. "core")
+    for par in dprof.keys():
+        label_par = 'O2_all' if 'Oxygen' in par or 'oxygen' in par else par + '_all'
+        # prepare label for all eventualities
+        if 'Sensor' in label_par:
+            label_par = label_par.split(' ')[-1]
+
+        # metadata sheet
+        ls_empty = list()
+        [ls_empty.append(i) for i in dprof[par].index if pd.isna(dprof[par].loc[i]).all()]
+
+        # identify index column (Time)
+        colInd = None
+        for i in dprof[par].columns:
+            if 'Time' in i:
+                colInd = i
+
+                # split into profiles for individual samples and cores; add Nr and group information
+        dprofile = splitDF2samples(dfex=df_meta, ls_empty=ls_empty, dprof=dprof, par=par, colInd=colInd)
+
+        # add sample-ID and group label to DF for sorting
+        dprofileS = addInfo2DF(dprofile=dprofile)
+
+        # dictionary of all sensors containing a full dataframe of all profiles sorted by group-label with a running
+        # sample-ID. The dataframe consists of the following columns: Nr	Core	Depth	concentration	signal
+        dprofiles[label_par] = dprofileS.dropna()
+    return dprofiles
+
+
+def splitDF2samples(dfex, ls_empty, dprof, par, colInd):
+    group = dfex['group code'].to_numpy()[0].split(' ')[0]
+    for c in dprof[par].columns:
+        if 'Depth' in c:
+            colD = c
+        else:
+            pass
+
+    dprofile, start = dict(), 0
+    for r in range(len(ls_empty)):
+        if r != 0:
+            start = ls_empty[r - 1]
+        df = dprof[par].loc[start:ls_empty[r] - 1].dropna().sort_values(by=colD)
+        # add sample-ID and group info for all but the last profile
+        df.loc[:, 'Nr'] = [dfex.loc[r].to_numpy()[0]] * len(df.index)
+        df.loc[:, group] = [int(dfex.loc[r].to_numpy()[1].split(' ')[1])] * len(df.index)
+        dprofile[tuple(dfex.loc[r].to_numpy()[:2])] = df.set_index(colInd)
+
+        if r == len(ls_empty) - 1:
+            # separate procedure for the last profile
+            df = dprof[par].loc[ls_empty[r] + 1:].dropna().sort_values(by=colD)
+            df.loc[:, 'Nr'] = [dfex.loc[r].to_numpy()[0] + 1] * len(df.index)
+            df.loc[:, group] = [int(dfex.loc[r].to_numpy()[1].split(' ')[1])] * len(df.index)
+            dprofile[tuple(dfex.loc[r + 1].to_numpy()[:2])] = df.set_index(colInd)
+    return dprofile
+
+
+def sortCols4DF(ls_cols, group):
+    cols_sort = list()
+    for c in ls_cols:
+        if 'Nr' in c or 'nr' in c:
+            cols_sort.append((0, c))
+        elif group in c:
+            cols_sort.append((1, c))
+        elif 'Depth' in c:
+            cols_sort.append((2, c))
+        elif 'sig' in c or 'Sig' in c:
+            cols_sort.append((4, c))
+        else:
+            cols_sort.append((3, c))
+    cols_sort = list(pd.DataFrame(cols_sort).sort_values(by=0)[1].to_numpy())
+    return cols_sort
+
+
+def addInfo2DF(dprofile):
+    # identify group label and columns order
+    group = list(dprofile.keys())[0][1].split(' ')[0]
+    ls_cols = dprofile[list(dprofile.keys())[0]].columns.to_numpy()
+
+    # sort columns for dataframe
+    cols_sort = sortCols4DF(ls_cols=ls_cols, group=group)
+
+    # adjust DF
+    for k in dprofile.keys():
+        dprofile[k] = dprofile[k][cols_sort]
+
+    # combine all sample-IDs and cores to one full DF
+    dprofileS = pd.concat(dprofile)
+    dprofileS.index = np.arange(len(dprofileS.index))
+
+    return dprofileS
+
+
+# -------------------------------------------------------------------------------------------------------
+def loadProfile(dfsens, dfprof):
+    # split where blank line is
+    arrSens = splitProfiles2Samples(dfsens=dfsens)
+
+    # split into sensors
+    ls_sens, head = list(), dfprof.columns
+    [ls_sens.append((en, c)) for en, c in enumerate(head) if 'Sensor' in c]
+
+    # read profiles
+    dprof = dict()
+    for s in range(len(ls_sens)):
+        if s == len(ls_sens) - 1:
+            df = (dfprof.loc[:, head[ls_sens[s][0]]:])
+            dprof[arrSens[s][0]] = df.T.set_index(0).T
+        else:
+            df = dfprof.loc[:, head[ls_sens[s][0]]:head[ls_sens[s + 1][0] - 1]]
+            dprof[arrSens[s][0]] = df.T.set_index(0).T
+    return dprof
+
+
+def prepAnalytes(dprof):
+    if 'Oxygen' in dprof.keys() or 'oxygen' in dprof.keys():
+        ls_cols = list()
+        for c in dprof['Oxygen'].columns:
+            if 'Concentration' in c:
+                ls_cols.append('O2_µM')
+            elif 'Signal' in c:
+                ls_cols.append('O2_mV')
+            else:
+                ls_cols.append(c)
+        dprof['Oxygen'].columns = ls_cols
+
+    if 'pH' in dprof.keys():
+        ls_cols = list()
+        for c in dprof['pH'].columns:
+            if 'Signal' in c:
+                ls_cols.append('pH_mV')
+            else:
+                ls_cols.append(c)
+        dprof['pH'].columns = ls_cols
+
+    for c in dprof.keys():
+        if 'EP' in c or 'Ep' in c or 'ep' in c:
+            ls_cols = list()
+            for co in dprof[c].columns:
+                if 'Concentration' in co:
+                    ls_cols.append('EP')
+                elif 'Signal' in co:
+                    ls_cols.append('EP_mV')
+                else:
+                    ls_cols.append(co)
+            dprof[c].columns = ls_cols
+
+    for c in dprof.keys():
+        if 'H2S' in c:
+            ls_cols = list()
+            for co in dprof[c].columns:
+                if 'Concentration' in co:
+                    ls_cols.append('H2S_µM')
+                elif 'Signal' in co:
+                    ls_cols.append('H2S_mV')
+                else:
+                    ls_cols.append(co)
+            dprof[c].columns = ls_cols
+
+    return dprof
+
+
+def splitProfiles2Samples(dfsens):
+    # split where blank line is
+    ls_end = list()
+    [ls_end.append(en) for en, i in enumerate(dfsens.index) if pd.isna(dfsens.loc[i].to_numpy()).all()]
+    arrSens = np.array(dfsens.loc[:ls_end[0] - 1])
+    return arrSens
+
+
+# ------------------------------------------------------------------------------
 def load_measurements(dsheets, ls_core, para):
+    print(544, para,)
     dic_dcore, dls_nr = dict(), dict()
     for core in ls_core:
-        nr = dsheets[dsheets['Core'] == core].index.to_numpy()
+        nr = dsheets[dsheets[dsheets.columns[1]] == core].index.to_numpy()
 
         ls_nr = list(dict.fromkeys(nr))
+        print(550, ls_nr, ls_core)
         dls_nr[core] = ls_nr
         # prepare table (index = depth)
         dcore = dict()
         for n in ls_nr:
+            print(554, n)
             # identify the depth column
-            col_ = [c for c in dsheets.loc[n].columns if 'Depth' in c]
-            ls_name = ['Core']
+            col_ = [c for c in dsheets.columns if 'Depth' in c]
+            ls_name = [dsheets.loc[:, : col_[0]].columns[-2]]
+
+            # oxygen profiles
             if 'O2' in para or 'o2' in para:
-                [ls_name.append(i) for i in dsheets.loc[n].columns if 'O2' in i and 'M' in i]
-                [ls_name.append(i) for i in dsheets.loc[n].columns if 'O2' in i and '_mV' in i]
-                df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
-                dcore[n] = df[df['Core'] == core]
+                print(561, type(dsheets))
+
+                df = dsheets.set_index(col_[0]).dropna()
+                print(565, df)
+                ls_cols = list(df.columns)
+                unitS = ls_cols[-1].split(' ')[1][1:-1] if ' ' in ls_cols[-1] else ls_cols[-1].split('_')[1]
+                unitC = ls_cols[-2].split(' ')[0][1:-1] if ' ' in ls_cols[-2] else ls_cols[-2].split('_')[1]
+                ls_cols[-1], ls_cols[-2] = 'O2_' + unitS, 'O2_' + unitC
+                df.columns = ls_cols
+                dcore[n] = df[df[ls_name[0]] == core]
+                print(df[df[ls_name[0]] == core])
+                print(566, dcore[n])
             elif 'H2S' in para or 'h2s' in para:
-                [ls_name.append(i) for i in dsheets.loc[n].columns if 'H2S' in i and 'M' in i]
-                df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
-                dcore[n] = df[df['Core'] == core]
+                print(dsheets.columns)
+                [ls_name.append(i) for i in dsheets.columns if 'H2S' in i and 'M' in i]
+                df = dsheets.set_index(col_[0])[ls_name].dropna()
+                dcore[n] = df[df[ls_name[0]] == core]
+                print(569, dcore[n])
             elif 'EP' in para or 'Ep' in para or 'ep' in para:
                 [ls_name.append(i) for i in dsheets.loc[n].columns if 'EP' in i and '_mV' in i]
                 df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
-                dcore[n] = df[df['Core'] == core]
+                dcore[n] = df[df[ls_name[0]] == core]
+                print(574)
             else:
-                df = dsheets.loc[n].dropna().set_index(col_[0])
-                dcore[n] = df[df['Core'] == core]
+                df = dsheets.set_index(col_[0]).dropna()
+                dcore[n] = df[df[ls_name[0]] == core]
+                print(581, dcore[n])
+            print(580)
         dic_dcore[core] = dcore
 
     return dic_dcore, dls_nr, ls_name

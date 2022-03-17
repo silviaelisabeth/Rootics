@@ -470,7 +470,7 @@ class o2Page(QWizardPage):
         self.slider.setMinimumWidth(350), self.slider.setFixedHeight(20)
         self.sld_label = QLabel()
         self.sld_label.setFixedWidth(50)
-        self.sld_label.setText('core: --')
+        self.sld_label.setText('group: --')
 
         # creating window layout
         w1 = QWidget()
@@ -583,7 +583,7 @@ class o2Page(QWizardPage):
                 msgBox1.setWindowTitle('Recalibration')
                 msgBox1.setText('Shall we do the calibration core by core or should we apply one calibration to all '
                                 'samples?')
-                msgBox1.addButton('core by core', msgBox1.ActionRole)
+                msgBox1.addButton('group by group', msgBox1.ActionRole)
                 msgBox1.addButton('apply to all', msgBox1.ActionRole)
 
                 ret = msgBox1.exec()
@@ -642,11 +642,12 @@ class o2Page(QWizardPage):
         # load excel sheet with all measurements
         if self.field("SoftwareFile") == 'True':
             # raw measurement file pre-processed and saved per default as rawData file
-            dsheets = dbs._loadFile4GUI(file=self.field("Data"))
+            dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
         else:
             # old version with pre-processed files:
             dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
-
+        print(649, dsheets['O2_all'])
+        print(dasjk)
         # pre-check whether O2_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='O2')
 
@@ -665,7 +666,7 @@ class o2Page(QWizardPage):
 
         # ----------------------------------------------------------------------------------
         # list all available cores for O2 sheet
-        ls_core = list(dict.fromkeys(ddata['Core'].to_numpy()))
+        ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
 
         # import all measurements for given parameter
         [dic_dcore, ls_nr,
@@ -1012,7 +1013,7 @@ class o2Page(QWizardPage):
             # reset count and reset slider and continue button / status
             self.count = 0
             self.slider.setValue(int(min(self.ls_core)))
-            self.sld_label.setText('core: --')
+            self.sld_label.setText('group: --')
             self.slider.disconnect()
             self.slider.valueChanged.connect(self.slider_update)
             self.continue_button.disconnect()
@@ -1747,7 +1748,7 @@ class phPage(QWizardPage):
         self.sliderpH.setMinimumWidth(350), self.sliderpH.setFixedHeight(20)
         self.sldpH_label = QLabel()
         self.sldpH_label.setFixedWidth(50)
-        self.sldpH_label.setText('core: --')
+        self.sldpH_label.setText('group: --')
 
         # creating window layout
         w2 = QWidget(self)
@@ -1808,7 +1809,7 @@ class phPage(QWizardPage):
 
     def load_pHdata(self):
         if self.field("SoftwareFile") == 'True':
-            dsheets = dbs._loadFile4GUI(file=self.field("Data"))
+            dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
         else:
             # old version with pre-processed files:
             dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
@@ -1824,7 +1825,7 @@ class phPage(QWizardPage):
             ddata = dsheets[sheet_select].set_index('Nr')
 
         # list all available cores for pH sheet
-        self.ls_core = list(dict.fromkeys(ddata['Core'].to_numpy()))
+        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
 
         # import all measurements for given parameter
         [self.dpH_core, ls_nr,
@@ -2020,7 +2021,7 @@ class phPage(QWizardPage):
         # reset slider
         self.count = 0
         self.sliderpH.setValue(int(min(self.ls_core)))
-        self.sldpH_label.setText('core: --')
+        self.sldpH_label.setText('group: --')
         self.sliderpH.disconnect()
         self.sliderpH.valueChanged.connect(self.sliderpH_update)
 
@@ -2486,7 +2487,7 @@ class h2sPage(QWizardPage):
         self.sliderh2s.setMinimumWidth(250), self.sliderh2s.setFixedHeight(20)
         self.sldh2s_label = QLabel()
         self.sldh2s_label.setFixedWidth(50)
-        self.sldh2s_label.setText('core: --')
+        self.sldh2s_label.setText('group: --')
 
         # creating window layout
         w2 = QWidget(self)
@@ -2555,7 +2556,7 @@ class h2sPage(QWizardPage):
 
     def load_H2Sdata(self):
         if self.field("SoftwareFile") == 'True':
-            dsheets = dbs._loadFile4GUI(file=self.field("Data"))
+            dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
         else:
             # old version with pre-processed files:
             dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
@@ -2571,7 +2572,7 @@ class h2sPage(QWizardPage):
             ddata = dsheets[sheet_select].set_index('Nr')
 
         # list all available cores for pH sheet
-        self.ls_core = list(dict.fromkeys(ddata['Core'].to_numpy()))
+        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
 
         # import all measurements for given parameter
         [self.dH2S_core, ls_nr,
@@ -2982,13 +2983,12 @@ class h2sPage(QWizardPage):
         # reset slider
         self.count = 0
         self.sliderh2s.setValue(int(min(self.ls_core)))
-        self.sldh2s_label.setText('core: --')
+        self.sldh2s_label.setText('group: --')
         self.sliderh2s.disconnect()
         self.sliderh2s.valueChanged.connect(self.sliderh2s_update)
 
         # clear pH range (scale), SWI correction
         self.swih2s_edit.setText('--')
-        self.sldh2s_label.setText('core: --')
         self.swih2s_box.setVisible(True), self.swih2s_box.setEnabled(False)
         self.swih2s_box.setCheckState(False)
 
@@ -3576,7 +3576,7 @@ class epPage(QWizardPage):
         self.sliderEP = QSlider(Qt.Horizontal)
         self.sliderEP.setMinimumWidth(350), self.sliderEP.setFixedHeight(20)
         self.sldEP_label = QLabel()
-        self.sldEP_label.setFixedWidth(50), self.sldEP_label.setText('core: --')
+        self.sldEP_label.setFixedWidth(50), self.sldEP_label.setText('group: --')
 
         # creating window layout
         w2 = QWidget(self)
@@ -3653,7 +3653,7 @@ class epPage(QWizardPage):
             ddata = dsheets[sheet_select].set_index('Nr')
 
         # list all available cores for pH sheet (in timely order, e.g., not ordered in ascending/ descending order)
-        self.ls_core = list(dict.fromkeys(ddata['Core'].to_numpy()))
+        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
 
         # import all measurements for given parameter
         [self.dEP_core, ls_nr,
@@ -3969,7 +3969,7 @@ class epPage(QWizardPage):
 
         # reset slider
         self.count = 0
-        self.sliderEP.setValue(int(min(self.ls_core))), self.sldEP_label.setText('core: --')
+        self.sliderEP.setValue(int(min(self.ls_core))), self.sldEP_label.setText('group: --')
         self.sliderEP.disconnect()
         self.sliderEP.valueChanged.connect(self.sliderEP_update)
 
