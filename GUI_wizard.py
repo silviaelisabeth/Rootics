@@ -646,17 +646,12 @@ class o2Page(QWizardPage):
         else:
             # old version with pre-processed files:
             dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
-        print(649, dsheets['O2_all'])
-        print(dasjk)
+
         # pre-check whether O2_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='O2')
 
-        # !!! TODO: field("SoftwareFile") might be depreciated in the future
         #  prepare file depending on the type
-        if self.field("SoftwareFile") == 'True':
-            ddata = dsheets[sheet_select]
-        else:
-            ddata = dsheets[sheet_select].set_index('Nr')
+        ddata = dsheets[sheet_select].set_index('Nr')
 
         return ddata, sheet_select
 
@@ -666,7 +661,7 @@ class o2Page(QWizardPage):
 
         # ----------------------------------------------------------------------------------
         # list all available cores for O2 sheet
-        ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
+        ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
 
         # import all measurements for given parameter
         [dic_dcore, ls_nr,
@@ -680,20 +675,19 @@ class o2Page(QWizardPage):
         return ls_core, ls_colname, gmod, dic_dcore, dic_deriv, dfit
 
     def baselineShift(self):
+        # baseline shift of all samples (of all cores)
         self.ddata_shift = dict()
-        for c in self.ls_colname[1:]:
-            data_shift = dbs.baseline_shift(dic_dcore=self.dic_dcore, dic_deriv=self.dic_deriv, column=c)
-            self.ddata_shift[c] = data_shift
+        self.ddata_shift = dbs.baseline_shift(dic_dcore=self.dic_dcore, dic_deriv=self.dic_deriv, dfit=self.dfit)
         results['O2 SWI corrected'] = self.ddata_shift
 
         # plot baseline corrected depth profiles
-        fig0 = dbs.GUI_baslineShift(data_shift=self.ddata_shift[self.ls_colname[-1]], core=min(self.ls_core),
-                                    ls_core=self.ls_core, fig=self.figO2, ax=self.axO2)
+        fig0 = dbs.GUI_baslineShift(data_shift=self.ddata_shift, core=min(self.ls_core), ls_core=self.ls_core,
+                                    fig=self.figO2, ax=self.axO2, plot_col='mV')
 
         # slider initialized to first core
         self.slider.setMinimum(int(min(self.ls_core))), self.slider.setMaximum(int(max(self.ls_core)))
         self.slider.setValue(int(min(self.ls_core)))
-        self.sld_label.setText('core: {}'.format(int(min(self.ls_core))))
+        self.sld_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
         # when slider value change (on click), return new value and update figure plot
         self.slider.valueChanged.connect(self.slider_update)
@@ -720,6 +714,9 @@ class o2Page(QWizardPage):
             # sigmoidal fit
             [self.ls_core, self.ls_colname, self.gmod, self.dic_dcore,
              self.dic_deriv, self.dfit] = self.sigmoidalFit(ddata=ddata, sheet_select=sheet_select)
+
+            # update group label
+            self.sld_label.setText('{}: {}'.format(self.ls_colname[0], min(self.ls_core)))
 
             # baseline shift
             self.baselineShift()
@@ -841,11 +838,11 @@ class o2Page(QWizardPage):
 
             # update slider position and label
             self.slider.setValue(int(core_select))
-            self.sld_label.setText('core: {}'.format(core_select))
+            self.sld_label.setText('{}: {}'.format(self.ls_colname[0], core_select))
 
             # update plot according to selected core
-            fig0 = dbs.GUI_baslineShift(data_shift=self.ddata_shift[self.ls_colname[-1]], core=core_select,
-                                        ls_core=self.ls_core, fig=self.figO2, ax=self.axO2)
+            fig0 = dbs.GUI_baslineShift(data_shift=self.ddata_shift, core=core_select, ls_core=self.ls_core,
+                                        fig=self.figO2, ax=self.axO2, plot_col='mV')
             self.figO2.canvas.draw()
 
     def slider_update1(self):
@@ -881,7 +878,7 @@ class o2Page(QWizardPage):
     def checkFitWindow(self):
         global wFit
         wFit = FitWindow(self.slider.value(), self.count, self.ls_core, self.dic_dcore, self.dfit, self.dic_deriv,
-                         self.ddata_shift[self.ls_colname[-1]], self.figO2, self.axO2)
+                         self.ddata_shift, self.figO2, self.axO2)
         if wFit.isVisible():
             pass
         else:
@@ -1090,7 +1087,7 @@ class FitWindow(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Check fit for depth correction")
-        self.setGeometry(650, 50, 550, 300) # x-position, y-position, width, height
+        self.setGeometry(650, 50, 600, 300) # x-position, y-position, width, height
 
         # add description about how to use this window (slider, outlier detection, cropping area)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
@@ -1302,10 +1299,11 @@ class FitWindow(QDialog):
         self.figFit.canvas.draw()
 
         # exchange the updated depth profile to the dictionary (to plot all)
-        self.dShift[c][s] = pd.DataFrame(dcore_crop['O2_mV'].values, dcore_crop.index - df_fitder.idxmin().values[0])
-
-        # plot baseline corrected depth profiles
-        fig0 = dbs.GUI_baslineShiftCore(data_shift=self.dShift[c], core_select=self.Core, fig=self.figO2, ax=self.axO2)
+        self.dShift[c][s] = pd.DataFrame(np.array(dcore_crop), index=dcore_crop.index - df_fitder.idxmin().values[0],
+                                         columns=dcore_crop.columns)
+        # plot baseline corrected depth profiles for special sample
+        fig0 = dbs.GUI_baslineShiftCore(data_shift=self.dShift[c], core_select=self.Core, plot_col='mV', fig=self.figO2,
+                                        ax=self.axO2)
         self.figO2.canvas.draw()
 
     def slider1_update(self):
@@ -1474,14 +1472,13 @@ def GUI_FitDepth(core, nr, dfCore, dfFit, dfDeriv, fig=None, ax=None, ax1=None, 
     # plotting part
     ax.plot(dfCore[nr].index, dfCore[nr]['O2_mV'], lw=0, marker='o', ms=4, color='k')
     ax.plot(dfFit[nr][1], lw=0.75, ls=':', color='k')
-    ax1.plot(dfDeriv[nr], lw=1., color='#0077b6')
-    ax1.axvline(dfDeriv[nr].idxmin().values[0], ls='-.', color='darkorange', lw=1.5)
+    ax1.plot(dfDeriv[nr][0], lw=1., color='#0077b6')
+    ax1.axvline(dfFit[nr][2], ls='-.', color='darkorange', lw=1.5)
 
     # text annotation for sediment water interface depth correction
     text = 'surface level \nat {:.1f}µm'
-    ax.text(dfCore[nr]['O2_mV'].index[-1] * 0.6, dfCore[nr]['O2_mV'].max() * 0.5,
-            text.format(dfDeriv[nr].idxmin().values[0]), ha="left", va="center", color='k', size=9.5,
-            bbox=dict(fc='lightgrey', alpha=0.25))
+    ax.text(dfCore[nr]['O2_mV'].index[-1] * 0.6, dfCore[nr]['O2_mV'].max() * 0.5, text.format(dfFit[nr][2]), ha="left",
+            va="center", color='k', size=9.5, bbox=dict(fc='lightgrey', alpha=0.25))
 
     # general layout
     ax.set_xlim(dfCore[nr].index[0]*1.05, dfCore[nr].index[-1]*1.05)

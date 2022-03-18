@@ -282,7 +282,7 @@ def plot_pHProfile(ls_core, dic_dcore, plot_res=True):
     return dfig
 
 
-def GUI_baslineShift(data_shift, core, ls_core, fig=None, ax=None, show=True):
+def GUI_baslineShift(data_shift, core, ls_core, plot_col, fig=None, ax=None, show=True):
     plt.ioff()
 
     # identify closest value in list
@@ -290,6 +290,12 @@ def GUI_baslineShift(data_shift, core, ls_core, fig=None, ax=None, show=True):
         core_select = 0
     else:
         core_select = min(ls_core, key=lambda x: abs(x - core))
+
+    # identify column to plot
+    for c in data_shift[core_select][list(data_shift[core_select].keys())[0]].columns:
+        if plot_col in c:
+            col2plot = c
+            unit = col2plot.split('_')[1]
 
     # plot figure
     if ax is None:
@@ -301,7 +307,7 @@ def GUI_baslineShift(data_shift, core, ls_core, fig=None, ax=None, show=True):
         pass
     else:
         ax.title.set_text('Sediment water interface profile (SWI) for core {}'.format(core_select))
-    ax.set_xlabel('O2 / mV'), ax.set_ylabel('Depth / µm')
+    ax.set_xlabel('O2 / {}'.format(unit)), ax.set_ylabel('Depth / µm')
     ax.invert_yaxis()
 
     if core_select != 0:
@@ -309,55 +315,71 @@ def GUI_baslineShift(data_shift, core, ls_core, fig=None, ax=None, show=True):
     if core_select == 0:
         pass
     else:
-        for en, nr in enumerate(data_shift[core_select].keys()):
-            ax.plot(data_shift[core_select][nr][0].to_numpy(), data_shift[core_select][nr].index, lw=0.75, ls='-.',
-                    marker='.', color=ls_col[en], alpha=0.75, label='sample ' + str(nr))
+        df = data_shift[core_select]
+        for en, nr in enumerate(df.keys()):
+            ax.plot(df[nr][col2plot].to_numpy(), df[nr].index, lw=.75, ls='-.', marker='.', color=ls_col[en], alpha=.75,
+                    label='sample ' + str(nr))
         ax.legend(frameon=True, fontsize=10)
 
-        max_ = max([data_shift[core_select][s].max()[0] for s in data_shift[core_select].keys()])
-        minPot = min(data_shift[core_select][nr][0].to_numpy())
-        if int(minPot) > 0:
-            min_ = min(data_shift[core_select][nr][0].to_numpy())*0.5
-        else:
-            min_ = -1 * max_ * 0.1
-        ax.set_xlim(min_, max_*1.05)
+        max_ = np.max([max(df[nr][col2plot].to_numpy()) for nr in df.keys()])
+        minPot = np.min([min(df[nr][col2plot].to_numpy()) for nr in df.keys()])
+        min_ = minPot*0.5 if int(minPot) > 0 else -1 * np.abs(max_) * 0.1
+        ax.set_xlim(min_, np.abs(max_)*1.05)
 
-    if show is False:
-        plt.close(fig)
-    else:
-        fig.canvas.draw()
+    # layout editing - ticks orientation and frame line width
+    [x.set_linewidth(.5) for x in ax.spines.values()]
+    ax.tick_params(axis='both', bottom=True, top=False, direction='out', length=5, width=0.75)
+    plt.tight_layout()
+
+    # show or hide figure plot
+    plt.close(fig) if show is False else fig.canvas.draw()
     return fig
 
 
-def GUI_baslineShiftCore(data_shift, core_select, fig, ax):
+def GUI_baslineShiftCore(data_shift, core_select, plot_col, fig, ax):
     ax.cla()
 
-    # plot figure
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(3, 4))
-    ax.title.set_text('Sediment water interface profile (SWI) for core {}'.format(core_select))
-    ax.set_xlabel('O2 / mV'), ax.set_ylabel('Depth / µm')
-    ax.invert_yaxis()
-
-    # draw the surface
-    ax.axhline(0, lw=.5, color='k')
-
-    # plot the depth corrected profiles for the selected core
-    for en, nr in enumerate(data_shift.keys()):
-        # draw the recorded points of the sample
-        ax.plot(data_shift[nr][0].to_numpy(), data_shift[nr].index, lw=0.5, ls='dotted', marker='.', color=ls_col[en],
-                alpha=0.75, label='sample ' + str(nr))
-        ax.legend(frameon=True, fontsize=10)
-
-        max_ = max([data_shift[s].max()[0] for s in data_shift.keys()])
-        minPot = min(data_shift[nr][0].to_numpy())
-        if int(minPot) > 0:
-            min_ = min(data_shift[nr][0].to_numpy())*0.5
+    # identify the columns to plot
+    s = list(data_shift.keys())[0]
+    col2plot, unit = None, None
+    for i in data_shift[s].columns:
+        if isinstance(plot_col, int):
+            if plot_col == i:
+                col2plot = i
+                unit = 'mV' if plot_col == 0 else col2plot.split('_')[1]
         else:
-            min_ = -1 * max_ * 0.1
-        ax.set_xlim(min_, max_*1.05)
+            if plot_col in i:
+                col2plot = i
+                unit = 'mV' if plot_col == 0 else col2plot.split('_')[1]
 
-    fig.canvas.draw()
+    if unit is None:
+        print('Nothing to plot here. Expected column not in dataframe.')
+    else:
+        # plot figure
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(3, 4))
+        ax.title.set_text('Sediment water interface profile (SWI) for core {}'.format(core_select))
+        ax.set_xlabel('O2 / {}'.format(unit)), ax.set_ylabel('Depth / µm')
+        ax.invert_yaxis()
+
+        # draw the surface
+        ax.axhline(0, lw=.5, color='k')
+        # plot the depth corrected profiles for the selected core
+        for en, nr in enumerate(data_shift.keys()):
+            # draw the recorded points of the sample
+            ax.plot(data_shift[nr][col2plot].to_numpy(), data_shift[nr].index, lw=.5, ls='-.', marker='.', alpha=.75,
+                    color=ls_col[en], label='sample ' + str(nr))
+            ax.legend(frameon=True, fontsize=10)
+
+            max_ = max(data_shift[nr][col2plot].to_numpy())
+            minPot = min(data_shift[nr][col2plot].to_numpy())
+            min_ = minPot * 0.5 if int(minPot) > 0 else -1 * np.abs(max_) * 0.1
+            ax.set_xlim(min_, np.abs(max_) * 1.05)
+
+        # layout editing - ticks orientation and frame line width
+        [x.set_linewidth(.5) for x in ax.spines.values()]
+        ax.tick_params(axis='both', bottom=True, top=False, direction='out', length=5, width=0.75)
+        plt.tight_layout(), fig.canvas.draw()
     return fig
 
 
@@ -592,54 +614,43 @@ def splitProfiles2Samples(dfsens):
 
 # ------------------------------------------------------------------------------
 def load_measurements(dsheets, ls_core, para):
-    print(544, para,)
     dic_dcore, dls_nr = dict(), dict()
     for core in ls_core:
-        nr = dsheets[dsheets[dsheets.columns[1]] == core].index.to_numpy()
-
-        ls_nr = list(dict.fromkeys(nr))
-        print(550, ls_nr, ls_core)
+        ls_nr = list(dict.fromkeys(dsheets[dsheets[dsheets.columns[0]] == core].index))
         dls_nr[core] = ls_nr
+
         # prepare table (index = depth)
         dcore = dict()
         for n in ls_nr:
-            print(554, n)
             # identify the depth column
             col_ = [c for c in dsheets.columns if 'Depth' in c]
             ls_name = [dsheets.loc[:, : col_[0]].columns[-2]]
 
+            # get individual samples belonging to the same core
+            dfcore = dsheets[dsheets[dsheets.columns[0]] == core]
+
             # oxygen profiles
             if 'O2' in para or 'o2' in para:
-                print(561, type(dsheets))
+                df = dfcore[dfcore.index == n].set_index(col_[0]).dropna()
 
-                df = dsheets.set_index(col_[0]).dropna()
-                print(565, df)
-                ls_cols = list(df.columns)
-                unitS = ls_cols[-1].split(' ')[1][1:-1] if ' ' in ls_cols[-1] else ls_cols[-1].split('_')[1]
-                unitC = ls_cols[-2].split(' ')[0][1:-1] if ' ' in ls_cols[-2] else ls_cols[-2].split('_')[1]
-                ls_cols[-1], ls_cols[-2] = 'O2_' + unitS, 'O2_' + unitC
-                df.columns = ls_cols
-                dcore[n] = df[df[ls_name[0]] == core]
-                print(df[df[ls_name[0]] == core])
-                print(566, dcore[n])
+                # crop dataframe of sample --> remove core information
+                ls_col = list()
+                [ls_col.append(i) for i in list(df.columns) if 'M' in i or 'mV' in i]
+                dcore[n] = df[ls_col]
+
             elif 'H2S' in para or 'h2s' in para:
                 print(dsheets.columns)
                 [ls_name.append(i) for i in dsheets.columns if 'H2S' in i and 'M' in i]
                 df = dsheets.set_index(col_[0])[ls_name].dropna()
                 dcore[n] = df[df[ls_name[0]] == core]
-                print(569, dcore[n])
             elif 'EP' in para or 'Ep' in para or 'ep' in para:
                 [ls_name.append(i) for i in dsheets.loc[n].columns if 'EP' in i and '_mV' in i]
                 df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
                 dcore[n] = df[df[ls_name[0]] == core]
-                print(574)
             else:
                 df = dsheets.set_index(col_[0]).dropna()
                 dcore[n] = df[df[ls_name[0]] == core]
-                print(581, dcore[n])
-            print(580)
         dic_dcore[core] = dcore
-
     return dic_dcore, dls_nr, ls_name
 
 
@@ -884,8 +895,9 @@ def fit_baseline(ls_core, ls_nr, dic_dcore, steps, gmod):
     for core in ls_core:
         dfit_, dic_deriv_ = dict(), dict()
         for nr in ls_nr[core]:
-            res, df_fit, df_fitder = baseline_finder(dic_dcore=dic_dcore, core=core, nr=nr, steps=steps, model=gmod)
-            dfit_[nr], dic_deriv_[nr] = (res, df_fit), df_fitder
+            [res, df_fit, df_fitder, df_fitder2,
+             xshift] = baseline_finder(dic_dcore=dic_dcore, core=core, nr=nr, steps=steps, model=gmod)
+            dfit_[nr], dic_deriv_[nr] = (res, df_fit, xshift), (df_fitder, df_fitder2)
         dfit[core] = dfit_
         dic_deriv[core] = dic_deriv_
     return dfit, dic_deriv
@@ -909,7 +921,20 @@ def baseline_finder(dic_dcore, core, nr, steps, model):
     df_fit = pd.DataFrame(yfit, index=xnew)
     df_fitder = df_fit.diff()
 
-    return res, df_fit, df_fitder
+    # ................................................................
+    # 2nd derivative
+    df_fitder2 = df_fitder.diff()
+
+    # identify type of extrema
+    xshift = df_fitder.idxmin()[0]
+    xturn = np.abs(df_fitder2.loc[xshift - 2:xshift + 2]).idxmin()[0]
+    if xshift == xturn:
+        pass
+    else:
+        xshift = xturn
+        print('Warning! extreme point might not be a real point of inflection', core, nr)
+
+    return res, df_fit, df_fitder, df_fitder2, xshift
 
 
 def baseline_finder_DF(dic_dcore, steps, model):
@@ -933,12 +958,13 @@ def baseline_finder_DF(dic_dcore, steps, model):
     return res, df_fit, df_fitder
 
 
-def baseline_shift(dic_dcore, dic_deriv, column='O2_mV'):
-    data_shift = dict(map(lambda core:
-                          (core, dict(map(lambda nr: (nr, pd.DataFrame(dic_dcore[core][nr][column].values,
-                                                                       dic_dcore[core][nr].index -
-                                                                       dic_deriv[core][nr].idxmin().values[0])),
-                                          dic_dcore[core].keys()))), dic_dcore.keys()))
+def baseline_shift(dic_dcore, dic_deriv, dfit):
+    data_shift = dict(map(lambda c:
+                          (c, dict(map(lambda n:
+                                       (n, pd.DataFrame(np.array(dic_dcore[c][n]),
+                                                        index=dic_dcore[c][n].index - dfit[c][n][2],
+                                                        columns=dic_dcore[c][n].columns)), dic_dcore[c].keys()))),
+                          dic_dcore.keys()))
     return data_shift
 
 
