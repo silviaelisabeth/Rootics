@@ -556,14 +556,13 @@ class o2Page(QWizardPage):
                                                                 'file? \nIf not,  the sensor will be recalibrated based'
                                                                 ' on the given temperature & salinity.',
                                            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-            # userCal.setFont(QFont('Helvetica Neue', 12))
 
         if userCal == QMessageBox.Yes:
             # define for output metadata
             self.typeCalib = 'internal calibration from measurement file'
 
             # calibration from excel file
-            dO2_core.update(dbs.O2rearrange(df=self.ddata_shift[self.ls_colname[1]], unit='µmol/l'))
+            dO2_core.update(dbs.O2rearrange(df=self.ddata_shift, unit='µmol/l'))
             results['O2 profile'] = dO2_core
 
             # continue with the process - first execute without any click
@@ -594,8 +593,8 @@ class o2Page(QWizardPage):
                 self.typeCalib = 'recalibration core by core'
 
                 # calibration core by core
-                dO2_core.update(dbs.O2converter4conc(data_shift=self.ddata_shift[self.ls_colname[-1]], lim_min=lim_min,
-                                                     lim=lim, o2_dis=self.o2_dis, unit='µmol/l'))
+                dO2_core.update(dbs.O2converter4conc(data_shift=self.ddata_shift, lim_min=lim_min, lim=lim,
+                                                     o2_dis=self.o2_dis, unit='µmol/l'))
                 results['O2 profile'] = dO2_core
 
                 # continue with the process - first execute without any click
@@ -737,9 +736,8 @@ class o2Page(QWizardPage):
 
     def continue_processI(self):
         # possible responses include either "core" or only the number -> find pattern with re
-        dO2_core.update(dbs.O2calc4conc_one4all(core_sel=int(core_select), lim_min=lim_min, lim=lim,
-                                                o2_dis=self.o2_dis, unit='µmol/l',
-                                                data_shift=self.ddata_shift[self.ls_colname[-1]]))
+        dO2_core.update(dbs.O2calc4conc_one4all(core_sel=int(core_select), lim_min=lim_min, lim=lim, unit='µmol/l',
+                                                o2_dis=self.o2_dis, data_shift=self.ddata_shift))
         results['O2 profile'] = dO2_core
 
         # define for output metadata

@@ -928,11 +928,11 @@ def baseline_finder(dic_dcore, core, nr, steps, model):
     # identify type of extrema
     xshift = df_fitder.idxmin()[0]
     xturn = np.abs(df_fitder2.loc[xshift - 2:xshift + 2]).idxmin()[0]
-    if xshift == xturn:
+    if xturn in [xshift-steps, xshift, xshift+steps]:
         pass
     else:
+        print('Warning! Extreme point for core {}-sample {} might not be a real point of inflection'.format(core, nr))
         xshift = xturn
-        print('Warning! extreme point might not be a real point of inflection', core, nr)
 
     return res, df_fit, df_fitder, df_fitder2, xshift
 
@@ -1067,6 +1067,10 @@ def findPotentialLimits(df, lim, lim_min):
 
 
 def O2converter4conc(data_shift, o2_dis, lim_min, lim, unit):
+    # get the correct column
+    dex = pd.concat(data_shift[list(data_shift.keys())[0]], axis=1)
+    col = [c for c in dex.columns.levels[1] if 'M' not in c][0]
+
     dO2_core = dict()
     for core in data_shift.keys():
         # find minimal and maximal potential for all samples of the core
@@ -1076,13 +1080,17 @@ def O2converter4conc(data_shift, o2_dis, lim_min, lim, unit):
         arg = stats.linregress(sorted(list(pot_av.loc['mean'].to_numpy())), sorted([o2_dis[1], o2_dis[0]]))
 
         do2_calib = dict(map(lambda s:
-                             (s, pd.DataFrame(arg[0]*data_shift[core][s][0].to_numpy() + arg[1], columns=['O2_'+unit],
+                             (s, pd.DataFrame(arg[0]*data_shift[core][s][col].to_numpy() + arg[1], columns=['O2_'+unit],
                                               index=data_shift[core][s].index)), data_shift[core].keys()))
         dO2_core[core] = pd.concat(do2_calib, axis=1)
     return dO2_core
 
 
 def O2calc4conc_one4all(core_sel, data_shift, o2_dis, lim, lim_min, unit):
+    # get the correct column
+    dex = pd.concat(data_shift[list(data_shift.keys())[0]], axis=1)
+    col = [c for c in dex.columns.levels[1] if 'M' not in c][0]
+
     # find minimal/maximal potential for samples of selected core
     pot_av = findPotentialLimits(df=data_shift[core_sel], lim=lim, lim_min=lim_min)
 
@@ -1092,17 +1100,24 @@ def O2calc4conc_one4all(core_sel, data_shift, o2_dis, lim, lim_min, unit):
     # apply now the calibration to all samples of all cores
     do2_core = dict(map(lambda c:
                         (c, pd.concat(dict(map(lambda s:
-                                               (s, pd.DataFrame(arg[0] * data_shift[c][s][0].to_numpy() + arg[1],
+                                               (s, pd.DataFrame(arg[0] * data_shift[c][s][col].to_numpy() + arg[1],
                                                                 columns=['O2_' + unit], index=data_shift[c][s].index)),
                                                data_shift[c].keys())), axis=1)), data_shift.keys()))
     return do2_core
 
 
 def O2rearrange(df, unit='µmol/L'):
+    # pre-filter columns to get the desired ones
+    dex = pd.concat(df[list(df.keys())[0]], axis=1)
+    if 'µ' in unit:
+        col = [c for c in dex.columns.levels[1] if 'M' in c][0]
+    else:
+        col = [c for c in dex.columns.levels[1] if 'M' not in c][0]
+
     dO2_core = dict()
     for core in df.keys():
-        d = pd.concat(df[core], axis=1)
-        d.columns.set_levels(['O2_' + unit]*len(d.columns.levels[1]), level=1, inplace=True)
+        d = pd.concat(df[core], axis=1).filter(like=col)
+        d.columns.set_levels(['O2_' + unit] * len(d.columns.levels[1]), level=1, inplace=True, verify_integrity=False)
         dO2_core[core] = d
     return dO2_core
 
