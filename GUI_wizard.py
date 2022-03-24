@@ -37,9 +37,11 @@ convC2K = 273.15                    # temperature conversion from degC into Kelv
 gof_accept = 10.                    # acceptable goodness of fit to result to reasonable depth profiles (SWI correction)
 gof_top = 3.                        # excellent goodness of fit to result to reasonable depth profiles (SWI correction)
 ls_allData = ['meta data', 'raw data', 'fit_mV', 'SWIcorrected mV', 'O2 profile', 'penetration depth']
+grp_label = None                    # global definition of group label
 
 # color list for samples: grey, orange, petrol, green, yellow, light grey, blue
-ls_col = list(['#4c5558', '#eb9032', '#21a0a8', '#9ec759', '#f9d220', '#96a6ab', '#1B08AA'])
+ls_col = list(['#4c5558', '#eb9032', '#21a0a8', '#9ec759', '#f9d220', '#96a6ab', '#1B08AA', '#40A64A', '#D20D41',
+               '#E87392'])
 ls_figtype = ['png']
 dpi = 300
 fs_font = 10
@@ -54,9 +56,9 @@ results, dout = dict(), dict()
 core_select, userCal, ret = None, None, None
 dobj_hid, dO2_core, dpen_glob = dict(), dict(), dict()
 # pH project
-scalepH = list()
+scalepH = dict()
 # H2S project
-scaleh2s = list()
+dobj_hidH2S, scaleh2s = dict(), list()
 # EP project
 dobj_hidEP, scaleEP = dict(), list()
 
@@ -68,9 +70,9 @@ wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "ep
 # !!! TODO: make smaller functions and store them in library py file - checked: intro, o2
 # !!! TODO: clean warnings marked by pycharm
 # !!! TODO: write the guideline - update the subtitle accordingly and avoid the "black box" image
-# !!! TODO: all plot with maximal lim
 # !!! TODO: make the layout / fontsize of text, buttons,... all the same
 # !!! TODO: combine similar functions / plots of different projects
+# !!! TODO: remove all default core label
 
 class QIComboBox(QComboBox):
     def __init__(self):
@@ -107,9 +109,9 @@ class MagicWizard(QWizard):
         # self.setPixmap(QWizard.LogoPixmap, QPixmap.fromImage(logo_image))
 
         # add a background image
-        path = os.path.join('/Users/au652733/Python/Project_CEMwizard/Pictures', 'leaves3.png')
+        path = os.path.join('/Users/au652733/Python/Project_CEMwizard/Pictures', 'logo_v1.png')
         pixmap = QtGui.QPixmap(path)
-        pixmap = pixmap.scaled(700, 500, QtCore.Qt.KeepAspectRatio)
+        pixmap = pixmap.scaled(400, 400, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         self.setPixmap(QWizard.BackgroundPixmap, pixmap)
 
 
@@ -445,7 +447,7 @@ class o2Page(QWizardPage):
         self.salinity_edit.setText(str(results['salinity PSU']))
 
         pene2_label, pene2_unit_label = QLabel(self), QLabel(self)
-        pene2_label.setText('Sensor LoD'), pene2_unit_label.setText('µmol/l')
+        pene2_label.setText('Sensor LoD'), pene2_unit_label.setText('µmol/L')
         self.pene2_edit = QLineEdit(self)
         self.pene2_edit.setValidator(QDoubleValidator()), self.pene2_edit.setAlignment(Qt.AlignRight)
         self.pene2_edit.setText('2.5')
@@ -531,7 +533,7 @@ class o2Page(QWizardPage):
         if self.count == 0:
             return
         else:
-            self.sld_label.setText('core: {}'.format(value))
+            self.sld_label.setText('{}: {}'.format(self.ls_colname[0], value))
 
     def conductivity_converterO2(self):
         # open dialog window for conductivity -> salinity conversion
@@ -562,7 +564,7 @@ class o2Page(QWizardPage):
             self.typeCalib = 'internal calibration from measurement file'
 
             # calibration from excel file
-            dO2_core.update(dbs.O2rearrange(df=self.ddata_shift, unit='µmol/l'))
+            dO2_core.update(dbs.O2rearrange(df=self.ddata_shift, unit='µmol/L'))
             results['O2 profile'] = dO2_core
 
             # continue with the process - first execute without any click
@@ -594,7 +596,7 @@ class o2Page(QWizardPage):
 
                 # calibration core by core
                 dO2_core.update(dbs.O2converter4conc(data_shift=self.ddata_shift, lim_min=lim_min, lim=lim,
-                                                     o2_dis=self.o2_dis, unit='µmol/l'))
+                                                     o2_dis=self.o2_dis, unit='µmol/L'))
                 results['O2 profile'] = dO2_core
 
                 # continue with the process - first execute without any click
@@ -651,6 +653,9 @@ class o2Page(QWizardPage):
 
         #  prepare file depending on the type
         ddata = dsheets[sheet_select].set_index('Nr')
+        global grp_label
+        if grp_label is None:
+            grp_label = ddata.columns[0]
 
         return ddata, sheet_select
 
@@ -681,7 +686,7 @@ class o2Page(QWizardPage):
 
         # plot baseline corrected depth profiles
         fig0 = dbs.GUI_baslineShift(data_shift=self.ddata_shift, core=min(self.ls_core), ls_core=self.ls_core,
-                                    fig=self.figO2, ax=self.axO2, plot_col='mV')
+                                    fig=self.figO2, ax=self.axO2, plot_col='mV', grp_label=self.ls_colname[0])
 
         # slider initialized to first core
         self.slider.setMinimum(int(min(self.ls_core))), self.slider.setMaximum(int(max(self.ls_core)))
@@ -736,7 +741,7 @@ class o2Page(QWizardPage):
 
     def continue_processI(self):
         # possible responses include either "core" or only the number -> find pattern with re
-        dO2_core.update(dbs.O2calc4conc_one4all(core_sel=int(core_select), lim_min=lim_min, lim=lim, unit='µmol/l',
+        dO2_core.update(dbs.O2calc4conc_one4all(core_sel=int(core_select), lim_min=lim_min, lim=lim, unit='µmol/L',
                                                 o2_dis=self.o2_dis, data_shift=self.ddata_shift))
         results['O2 profile'] = dO2_core
 
@@ -753,7 +758,7 @@ class o2Page(QWizardPage):
             # determine penetration depth according to given O2 concentration
             self.O2_penetration = float(self.pene2_edit.text())
             [self.dcore_pen,
-             dcore_fig] = GUI_calcO2penetration(unit='µmol/l', steps=steps, gmod=self.gmod,
+             dcore_fig] = GUI_calcO2penetration(unit='µmol/L', steps=steps, gmod=self.gmod,
                                                 O2_pen=float(self.pene2_edit.text()))
             results['O2 penetration depth'] = self.dcore_pen
 
@@ -763,7 +768,7 @@ class o2Page(QWizardPage):
 
             # slider initialized to first core
             self.slider.setValue(int(min(self.ls_core)))
-            self.sld_label.setText('core: {}'.format(int(min(self.ls_core))))
+            self.sld_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
             # initialize first plot with first core
             fig1 = GUI_O2depth(core=int(min(self.ls_core)), ls_core=self.ls_core, dcore_pen=self.dcore_pen,
@@ -790,12 +795,12 @@ class o2Page(QWizardPage):
         # double check, whether definition of penetration depth has changed
         if self.O2_penetration != float(self.pene2_edit.text()):
             [self.dcore_pen,
-             dcore_fig] = GUI_calcO2penetration(unit='µmol/l', steps=steps, O2_pen=float(self.pene2_edit.text()),
+             dcore_fig] = GUI_calcO2penetration(unit='µmol/L', steps=steps, O2_pen=float(self.pene2_edit.text()),
                                                 gmod=self.gmod)
 
         # slider initialized to first core
         self.slider.setValue(int(min(self.ls_core)))
-        self.sld_label.setText('core: {}'.format(int(min(self.ls_core))))
+        self.sld_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
         # initialize first plot with first core
         fig2, mean_ = GUI_penetration_av(core=int(min(self.ls_core)), ls_core=self.ls_core,
@@ -840,7 +845,7 @@ class o2Page(QWizardPage):
 
             # update plot according to selected core
             fig0 = dbs.GUI_baslineShift(data_shift=self.ddata_shift, core=core_select, ls_core=self.ls_core,
-                                        fig=self.figO2, ax=self.axO2, plot_col='mV')
+                                        fig=self.figO2, ax=self.axO2, plot_col='mV', grp_label=grp_label)
             self.figO2.canvas.draw()
 
     def slider_update1(self):
@@ -853,7 +858,7 @@ class o2Page(QWizardPage):
 
             # update slider position and label
             self.slider.setValue(int(core_select))
-            self.sld_label.setText('core: {}'.format(core_select))
+            self.sld_label.setText('{}: {}'.format(self.ls_colname[0], core_select))
 
             # update plot according to selected core
             fig1 = GUI_O2depth(core=core_select, ls_core=self.ls_core, dcore_pen=self.dcore_pen, dobj_hid=dobj_hid,
@@ -866,7 +871,7 @@ class o2Page(QWizardPage):
 
         # update slider position and label
         self.slider.setValue(int(core_select))
-        self.sld_label.setText('core: {}'.format(core_select))
+        self.sld_label.setText('{}: {}'.format(self.ls_colname[0], core_select))
 
         # update plot according to selected core
         fig2, mean_ = GUI_penetration_av(core=core_select, ls_core=self.ls_core, dcore_pen=self.dcore_pen,
@@ -1114,11 +1119,6 @@ class FitWindow(QDialog):
         self.chi2 = QLabel()
         self.chi2.setText('Goodness of fit (reduced χ2): --')
         self.chi2.setAlignment(Qt.AlignLeft)
-        self.pixmapP = QPixmap(qta.icon('fa5.laugh').pixmap(QtCore.QSize(16, 16)))
-        self.pixmapG = QPixmap(qta.icon('fa5.meh-blank').pixmap(QtCore.QSize(16, 16)))
-        self.pixmapB = QPixmap(qta.icon('fa5.frown').pixmap(QtCore.QSize(16, 16)))
-        self.chi2_bx.setPixmap(self.pixmapG)
-        self.chi2_bx.setAlignment(Qt.AlignRight)
 
         # creating window layout
         mlayout2 = QVBoxLayout()
@@ -1268,12 +1268,6 @@ class FitWindow(QDialog):
         res, df_fit_crop, df_fitder = dbs.baseline_finder_DF(dic_dcore=dcore_crop, steps=steps, model=gmod)
 
         # update red.chi2
-        if round(res.redchi, 3) > gof_accept:
-            self.chi2_bx.setPixmap(self.pixmapB)
-        elif gof_top < round(res.redchi, 3) < gof_accept:
-            self.chi2_bx.setPixmap(self.pixmapG)
-        else:
-            self.chi2_bx.setPixmap(self.pixmapP)
         self.chi2.setText('Goodness of fit (reduced χ2): ' + str(round(res.redchi, 3)))
         return df_fit_crop, df_fitder
 
@@ -1301,7 +1295,7 @@ class FitWindow(QDialog):
                                          columns=dcore_crop.columns)
         # plot baseline corrected depth profiles for special sample
         fig0 = dbs.GUI_baslineShiftCore(data_shift=self.dShift[c], core_select=self.Core, plot_col='mV', fig=self.figO2,
-                                        ax=self.axO2)
+                                        ax=self.axO2, grp_label=grp_label)
         self.figO2.canvas.draw()
 
     def slider1_update(self):
@@ -1315,12 +1309,12 @@ class FitWindow(QDialog):
         self.sld1_label.setText('sample: {}'.format(sample_select))
 
         # update goodness of fit (red. chi-2 for actual fit)
-        if round(self.FitCore[int(sample_select)][0].redchi, 3) > gof_accept:
-            self.chi2_bx.setPixmap(self.pixmapB)
-        elif gof_top < round(self.FitCore[int(sample_select)][0].redchi, 3) < gof_accept:
-            self.chi2_bx.setPixmap(self.pixmapG)
-        else:
-            self.chi2_bx.setPixmap(self.pixmapP)
+        #         if round(self.FitCore[int(sample_select)][0].redchi, 3) > gof_accept:
+        # self.chi2_bx.setPixmap(self.pixmapB)
+        # elif gof_top < round(self.FitCore[int(sample_select)][0].redchi, 3) < gof_accept:
+        #     self.chi2_bx.setPixmap(self.pixmapG)
+        # else:
+        #     self.chi2_bx.setPixmap(self.pixmapP)
         self.chi2.setText('Goodness of fit (reduced χ2): ' + str(round(self.FitCore[int(sample_select)][0].redchi, 3)))
 
         # update plot according to selected core
@@ -1406,7 +1400,8 @@ def figures4saving(ls_core, ddata_shift=None, ddcore=None, dfit=None, deriv=None
     for c in ls_core:
         # SWI corrected
         if ddata_shift:
-            dfigBase[c] = dbs.GUI_baslineShift(show=False, data_shift=ddata_shift, core=c, ls_core=ls_core)
+            dfigBase[c] = dbs.GUI_baslineShift(data_shift=ddata_shift, grp_label=grp_label, core=c, show=False,
+                                               ls_core=ls_core, plot_col='mV')
 
         # Fit plots
         dfigFitS = dict()
@@ -1430,7 +1425,7 @@ def plot_Fitselect(core, sample, dfCore, dfFit, dfDeriv, fig, ax, ax1):
 def plot_FitUpdate(core, nr, dic_dcore, dfit, dic_deriv, fig, ax, ax1):
     # clear coordinate system but keep the labels
     ax.cla(), ax1.cla()
-    ax.title.set_text('Fit characteristics for core {} - sample {}'.format(core, nr))
+    ax.title.set_text('Fit characteristics for {} {} - sample {}'.format(grp_label, core, nr))
     ax.set_xlabel('Depth / µm'), ax.set_ylabel('O2 / mV'), ax1.set_ylabel('1st derivative', color='#0077b6')
 
     # plotting part
@@ -1464,7 +1459,7 @@ def GUI_FitDepth(core, nr, dfCore, dfFit, dfDeriv, fig=None, ax=None, ax1=None, 
         ax.cla(), ax1.cla()
 
     if core != 0:
-        ax.title.set_text('Fit characteristics for core {} - sample {}'.format(core, nr))
+        ax.title.set_text('Fit characteristics for {} {} - sample {}'.format(grp_label, core, nr))
         ax.set_xlabel('Depth / µm'), ax.set_ylabel('O2 / mV'), ax1.set_ylabel('1st derivative', color='#0077b6')
 
     # plotting part
@@ -1500,8 +1495,8 @@ def GUI_O2depth(core, ls_core, dcore_pen, dobj_hid, fig, ax):
     if ax is None:
         fig, ax = plt.subplots(figsize=(3, 4))
     if core_select != 0:
-        ax.title.set_text('Fit depth profile for core {}'.format(core_select))
-    ax.set_xlabel('O2 concentration / µmol/l'), ax.set_ylabel('Depth / µm')
+        ax.title.set_text('Fit depth profile for {} {}'.format(grp_label, core_select))
+    ax.set_xlabel('O2 concentration / µmol/L'), ax.set_ylabel('Depth / µm')
     ax.invert_yaxis()
 
     if core_select != 0:
@@ -1616,15 +1611,15 @@ def GUI_calcO2penetration(O2_pen, unit, steps, gmod):
 
 def av_penetrationDepth(core_select, ls_remain):
     mean_ = (dpen_glob['Depth / µm'].loc[core_select].loc[ls_remain].mean(),
-             dpen_glob['O2_µmol/l'].loc[core_select].loc[ls_remain].mean())
+             dpen_glob['O2_µmol/L'].loc[core_select].loc[ls_remain].mean())
     std_ = (dpen_glob['Depth / µm'].loc[core_select].loc[ls_remain].std(),
-            dpen_glob['O2_µmol/l'].loc[core_select].loc[ls_remain].std())
+            dpen_glob['O2_µmol/L'].loc[core_select].loc[ls_remain].std())
 
     # update dpen_glob
     dpen_glob['Depth / µm'].loc[core_select].loc['mean'] = mean_[0]
-    dpen_glob['O2_µmol/l'].loc[core_select].loc['mean'] = mean_[1]
+    dpen_glob['O2_µmol/L'].loc[core_select].loc['mean'] = mean_[1]
     dpen_glob['Depth / µm'].loc[core_select].loc['std'] = std_[0]
-    dpen_glob['O2_µmol/l'].loc[core_select].loc['std'] = std_[1]
+    dpen_glob['O2_µmol/L'].loc[core_select].loc['std'] = std_[1]
     return mean_, std_
 
 
@@ -1682,14 +1677,14 @@ def GUI_penetration_av(core, ls_core, dcore_pen, fig=None, ax=None, show=True):
 
         # layout
         ax.set_xlim(-10, df.max().max() * 1.05), ax.set_ylim(df.idxmin().max() * 1.05, df.idxmax().min() * 1.05)
-        ax.set_ylabel('Depth / µm'), ax.set_xlabel('O2 concentration ' + 'µmol/l')
+        ax.set_ylabel('Depth / µm'), ax.set_xlabel('O2 concentration ' + 'µmol/L')
 
         # include mean depth in title
         if core_select == 0 or not dcore_pen:
             pass
         else:
-            ax.title.set_text('Average penetration depth for core {}: {:.0f} ± {:.0f}µm'.format(core_select, mean_[0],
-                                                                                                std_[0]))
+            ax.title.set_text('Average penetration depth for {} {}: {:.0f} ± {:.0f}µm'.format(grp_label, core_select,
+                                                                                              mean_[0], std_[0]))
         if show is False:
             plt.close(fig)
         else:
@@ -1712,7 +1707,8 @@ class phPage(QWizardPage):
         self.adjustpH_button.clicked.connect(self.adjust_pH)
         self.savepH_button.clicked.connect(self.save_pH)
         self.resetpH_button.clicked.connect(self.reset_pHpage)
-        self.swipH_box.stateChanged.connect(self.enablePlot_swiBox)
+        self.updatepH_button.clicked.connect(self.swi_correctionpH)
+        # self.swipH_box.stateChanged.connect(self.enablePlot_swiBox)
 
     def initUI(self):
         # manual baseline correction
@@ -1723,9 +1719,9 @@ class phPage(QWizardPage):
         self.swi_edit.setMaximumWidth(100), self.swi_edit.setText('--'), self.swi_edit.setEnabled(False)
 
         # option to select the SWI (baseline) from the O2 calculations in case O2 was selected
-        self.swipH_box = QCheckBox('SWI from O2 analysis', self)
-        self.swipH_box.setFont(QFont('Helvetica Neue', fs_font))
-        self.swipH_box.setVisible(True), self.swipH_box.setEnabled(False)
+        #self.swipH_box = QCheckBox('SWI from O2 analysis', self)
+        #self.swipH_box.setFont(QFont('Helvetica Neue', fs_font))
+        #self.swipH_box.setVisible(True), self.swipH_box.setEnabled(False)
 
         # Action button
         self.savepH_button = QPushButton('Save', self)
@@ -1735,6 +1731,9 @@ class phPage(QWizardPage):
         self.adjustpH_button = QPushButton('Adjustments', self)
         self.adjustpH_button.setFixedWidth(100), self.adjustpH_button.setEnabled(False)
         self.adjustpH_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.updatepH_button = QPushButton('Update SWI', self)
+        self.updatepH_button.setFixedWidth(100), self.updatepH_button.setEnabled(False)
+        self.updatepH_button.setFont(QFont('Helvetica Neue', fs_font))
         self.resetpH_button = QPushButton('Reset', self)
         self.resetpH_button.setFixedWidth(100), self.resetpH_button.setFont(QFont('Helvetica Neue', fs_font))
 
@@ -1742,7 +1741,7 @@ class phPage(QWizardPage):
         self.sliderpH = QSlider(Qt.Horizontal)
         self.sliderpH.setMinimumWidth(350), self.sliderpH.setFixedHeight(20)
         self.sldpH_label = QLabel()
-        self.sldpH_label.setFixedWidth(50)
+        self.sldpH_label.setFixedWidth(55)
         self.sldpH_label.setText('group: --')
 
         # creating window layout
@@ -1762,7 +1761,8 @@ class phPage(QWizardPage):
         grid_swi.addWidget(swi_label, 0, 0)
         grid_swi.addWidget(self.swi_edit, 0, 1)
         grid_swi.addWidget(swi_unit_label, 0, 2)
-        grid_swi.addWidget(self.swipH_box, 0, 3)
+        # grid_swi.addWidget(self.swipH_box, 0, 3)
+        grid_swi.addWidget(self.updatepH_button, 0, 3)
         grid_swi.addWidget(self.continuepH_button, 1, 0)
         grid_swi.addWidget(self.adjustpH_button, 1, 1)
         grid_swi.addWidget(self.resetpH_button, 1, 2)
@@ -1812,15 +1812,14 @@ class phPage(QWizardPage):
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='pH')
 
-        # !!! TODO: field("SoftwareFile") might be depreciated in the future
         #  prepare file depending on the type
-        if self.field("SoftwareFile") == 'True':
-            ddata = dsheets[sheet_select]
-        else:
-            ddata = dsheets[sheet_select].set_index('Nr')
+        ddata = dsheets[sheet_select].set_index('Nr')
+        global grp_label
+        if grp_label is None:
+            grp_label = ddata.columns[0]
 
         # list all available cores for pH sheet
-        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
+        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
 
         # import all measurements for given parameter
         [self.dpH_core, ls_nr,
@@ -1834,41 +1833,36 @@ class phPage(QWizardPage):
         # set status for process control
         self.status_pH = 0
 
-        # update layout
-        self.swipH_box.setEnabled(True) if self.field("SWI pH as o2") == 'True' else self.swipH_box.setEnabled(False)
-        self.swi_edit.setEnabled(True)
-
         # load data
         self.load_pHdata()
 
-        # ----------------------------------------------------------------------------------
         # adjust all the core plots to the same x-scale
         dfpH_scale = pd.concat([pd.DataFrame([(self.dpH_core[c][n]['pH'].min(), self.dpH_core[c][n]['pH'].max())
                                               for n in self.dpH_core[c].keys()]) for c in self.dpH_core.keys()])
         self.scale0 = dfpH_scale[0].min(), dfpH_scale[1].max()
-        # use self.scale0 for the initial plot but make it possible to update self.scale
         self.scale = self.scale0
-
         # plot the pH profile for the first core
-        figpH0 = plot_pHProfile(data_pH=self.dpH_core, core=min(self.ls_core), ls_core=self.ls_core, scale=self.scale0,
+        figpH0 = plot_pHProfile(data_pH=self.dpH_core, core=min(self.ls_core), ls_core=self.ls_core, scale=self.scale,
                                 fig=self.figpH, ax=self.axpH)
+        self.figpH.canvas.draw()
 
         # slider initialized to first core
         self.sliderpH.setMinimum(int(min(self.ls_core))), self.sliderpH.setMaximum(int(max(self.ls_core)))
         self.sliderpH.setValue(int(min(self.ls_core)))
-        self.sldpH_label.setText('core: {}'.format(int(min(self.ls_core))))
+        self.sldpH_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
         # when slider value change (on click), return new value and update figure plot
         self.sliderpH.valueChanged.connect(self.sliderpH_update)
 
         # update continue button to "update" in case the swi shall be updated
+        self.swi_edit.setEnabled(True), self.updatepH_button.setEnabled(True)
         self.adjustpH_button.setEnabled(True)
         self.continuepH_button.disconnect()
         self.continuepH_button.clicked.connect(self.continue_pHII)
 
         # set options for swi correction
-        if 'O2 penetration depth' not in results.keys():
-            self.swipH_box.setEnabled(False)
+        #if 'O2 penetration depth' not in results.keys():
+        #    self.swipH_box.setEnabled(False)
 
     def continue_pHII(self):
         # update status for process control
@@ -1877,80 +1871,122 @@ class phPage(QWizardPage):
         # identify closest value in list
         core_select = closest_core(ls_core=self.ls_core, core=self.sliderpH.value())
 
-        # check whether a (manual) swi correction is required. SWI correction only for current core
-        self.swi_correctionpH()
-
         # plot the pH profile for the first core
-        scale_plot = self.scale0 if len(scalepH) == 0 else scalepH
-        figpH0 = plot_pHProfile(data_pH=self.dpH_core, core=core_select, ls_core=self.ls_core, scale=scale_plot,
-                                ls='-', fig=self.figpH, ax=self.axpH)
+        if core_select in scalepH.keys():
+            scale_plot = self.scale0 if len(scalepH[core_select]) == 0 else scalepH[core_select]
+        else:
+            scale_plot = self.scale0
+        figpH0 = plot_pHProfile(data_pH=self.dpH_core, core=core_select, ls_core=self.ls_core, scale=scale_plot, ls='-',
+                                fig=self.figpH, ax=self.axpH)
+        self.figpH.canvas.draw()
+
+        # slider initialized to first core - connect to valueChanged
+        self.sliderpH.setValue(int(core_select)), self.sldpH_label.setText('{}: {}'.format(self.ls_colname[0],
+                                                                                           int(core_select)))
+        self.sliderpH.valueChanged.connect(self.sliderpH_update)
+
+    def swi_correctionpH(self):
+        # update the status for layout in plot
+        self.status_pH = 1.
+
+        # identify closest value in list
+        core_select = min(self.ls_core, key=lambda x: abs(x - self.sliderpH.value()))
+
+        # update information about actual correction of pH profile
+        if '--' in self.swi_edit.text():
+            results['pH swi depth'] = dict({core_select: 0.})
+        elif 'pH swi depth' in results.keys():
+            if core_select in results['pH swi depth'].keys():
+                results['pH swi depth'][core_select] += float(self.swi_edit.text())
+            else:
+                dic1 = dict({core_select: float(self.swi_edit.text())})
+                results['pH swi depth'].update(dic1)
+        else:
+            results['pH swi depth'] = dict({core_select: float(self.swi_edit.text())})
+
+        if '--' in self.swi_edit.text() or len(self.swi_edit.text()) == 0:
+            pass
+        else:
+            # correction of manually selected baseline
+            for s in self.dpH_core[core_select].keys():
+                ynew = self.dpH_core[core_select][s].index - float(self.swi_edit.text())
+                self.dpH_core[core_select][s].index = ynew
+        results['pH swi corrected'] = self.dpH_core
+
+        # update plot accordingly
+        if core_select in scalepH.keys():
+            scale_plot = self.scale0 if len(scalepH[core_select]) == 0 else scalepH[core_select]
+        else:
+            scale_plot = self.scale0
+        figpH0 = plot_pHProfile(data_pH=self.dpH_core, core=core_select, ls_core=self.ls_core, scale=scale_plot, ls='-',
+                                fig=self.figpH, ax=self.axpH)
         self.figpH.canvas.draw()
 
         # slider initialized to first core
-        self.sliderpH.setValue(int(core_select)), self.sldpH_label.setText('core: {}'.format(int(core_select)))
-
+        self.sliderpH.setValue(int(core_select)), self.sldpH_label.setText('{}: {}'.format(self.ls_colname[0],
+                                                                                           int(core_select)))
         # when slider value change (on click), return new value and update figure plot
         self.sliderpH.valueChanged.connect(self.sliderpH_update)
 
         # store adjusted pH
         results['pH swi adjusted'] = self.dpH_core
 
-    def swi_correctionpH(self):
-        # identify closest value in list
-        core_select = min(self.ls_core, key=lambda x: abs(x - self.sliderpH.value()))
-
-        if self.swipH_box.checkState() == 0:
-            self.continuepH_button.setEnabled(True)
-
-            # update information about actual correction of pH profile
-            if '--' in self.swi_edit.text():
-                results['pH swi depth'] = dict({core_select: 0.})
-            elif 'pH swi depth' in results.keys():
-                if core_select in results['pH swi depth'].keys():
-                    results['pH swi depth'][core_select] += float(self.swi_edit.text())
-                else:
-                    dic1 = dict({core_select: float(self.swi_edit.text())})
-                    results['pH swi depth'].update(dic1)
-            else:
-                results['pH swi depth'] = dict({core_select: float(self.swi_edit.text())})
-
-            if '--' in self.swi_edit.text() or len(self.swi_edit.text()) == 0:
-                pass
-            else:
-                # correction of manually selected baseline
-                for s in self.dpH_core[core_select].keys():
-                    ynew = self.dpH_core[core_select][s].index - float(self.swi_edit.text())
-                    self.dpH_core[core_select][s].index = ynew
-        else:
-            dpen_av = dict()
-            for c in results['O2 penetration depth'].keys():
-                ls = list()
-                [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
-                 if "penetration" in i]
-                l = pd.DataFrame([results['O2 penetration depth'][c][s]
-                                  for s in results['O2 penetration depth'][c].keys()
-                     if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
-                dpen_av[c] = l.mean()
-
-            # update information about actual correction of pH profile
-            if 'pH swi depth' in results.keys():
-                for c in self.dpH_core.keys():
-                    if c in results['pH swi depth'].keys():
-                        results['pH swi depth'][c] += dpen_av[c]['Depth (µm)']
-                    else:
-                        results['pH swi depth'][c] = dpen_av[c]['Depth (µm)']
-            else:
-                results['pH swi depth'] = dpen_av
-
-            # SWI correction as for O2 project
-            for c in self.dpH_core.keys():
-                for s in self.dpH_core[c].keys():
-                    xnew = [i - dpen_av[c]['Depth (µm)'] for i in self.dpH_core[c][s].index]
-                    self.dpH_core[c][s].index = xnew
-
-            # SWI correction applied only once
-            self.continuepH_button.setEnabled(False)
-        results['pH swi corrected'] = self.dpH_core
+    # def swi_correctionpH(self):
+    #     # identify closest value in list
+    #     core_select = min(self.ls_core, key=lambda x: abs(x - self.sliderpH.value()))
+    #
+    #     if self.swipH_box.checkState() == 0:
+    #         self.continuepH_button.setEnabled(True)
+    #
+    #         # update information about actual correction of pH profile
+    #         if '--' in self.swi_edit.text():
+    #             results['pH swi depth'] = dict({core_select: 0.})
+    #         elif 'pH swi depth' in results.keys():
+    #             if core_select in results['pH swi depth'].keys():
+    #                 results['pH swi depth'][core_select] += float(self.swi_edit.text())
+    #             else:
+    #                 dic1 = dict({core_select: float(self.swi_edit.text())})
+    #                 results['pH swi depth'].update(dic1)
+    #         else:
+    #             results['pH swi depth'] = dict({core_select: float(self.swi_edit.text())})
+    #
+    #         if '--' in self.swi_edit.text() or len(self.swi_edit.text()) == 0:
+    #             pass
+    #         else:
+    #             # correction of manually selected baseline
+    #             for s in self.dpH_core[core_select].keys():
+    #                 ynew = self.dpH_core[core_select][s].index - float(self.swi_edit.text())
+    #                 self.dpH_core[core_select][s].index = ynew
+    #     else:
+    #         dpen_av = dict()
+    #         for c in results['O2 penetration depth'].keys():
+    #             ls = list()
+    #             [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
+    #              if "penetration" in i]
+    #             l = pd.DataFrame([results['O2 penetration depth'][c][s]
+    #                               for s in results['O2 penetration depth'][c].keys()
+    #                  if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
+    #             dpen_av[c] = l.mean()
+    #
+    #         # update information about actual correction of pH profile
+    #         if 'pH swi depth' in results.keys():
+    #             for c in self.dpH_core.keys():
+    #                 if c in results['pH swi depth'].keys():
+    #                     results['pH swi depth'][c] += dpen_av[c]['Depth (µm)']
+    #                 else:
+    #                     results['pH swi depth'][c] = dpen_av[c]['Depth (µm)']
+    #         else:
+    #             results['pH swi depth'] = dpen_av
+    #
+    #         # SWI correction as for O2 project
+    #         for c in self.dpH_core.keys():
+    #             for s in self.dpH_core[c].keys():
+    #                 xnew = [i - dpen_av[c]['Depth (µm)'] for i in self.dpH_core[c][s].index]
+    #                 self.dpH_core[c][s].index = xnew
+    #
+    #         # SWI correction applied only once
+    #         self.continuepH_button.setEnabled(False)
+    #     results['pH swi corrected'] = self.dpH_core
 
     def sliderpH_update(self):
         if self.ls_core:
@@ -1959,20 +1995,23 @@ class phPage(QWizardPage):
 
             # update slider position and label
             self.sliderpH.setValue(int(core_select))
-            self.sldpH_label.setText('core: {}'.format(core_select))
+            self.sldpH_label.setText('{}: {}'.format(self.ls_colname[0], core_select))
 
             # update plot according to selected core
-            scale_plot = self.scale0 if len(scalepH) == 0 or self.status_pH == 0 else scalepH
-            ls = '-.' if self.status_pH <= 2 else '-'
+            if core_select in scalepH.keys():
+                scale_plot = self.scale0 if len(scalepH[core_select]) == 0 else scalepH[core_select]
+            else:
+                scale_plot = self.scale0
+            ls = '-.' if self.status_pH < 1 else '-'
             figpH0 = plot_pHProfile(data_pH=self.dpH_core, core=core_select, ls_core=self.ls_core, scale=scale_plot,
                                     ls=ls, fig=self.figpH, ax=self.axpH)
             self.figpH.canvas.draw()
 
     def adjust_pH(self):
         # open dialog window to adjust data presentation
-        self.status_pH = 1.5
         global wAdjust
-        wAdjust = AdjustpHWindow(self.sliderpH.value(), self.ls_core, self.dpH_core, self.scale, self.figpH, self.axpH)
+        wAdjust = AdjustpHWindow(self.sliderpH.value(), self.ls_core, self.dpH_core, self.scale, self.figpH, self.axpH,
+                                 self.status_pH)
         if wAdjust.isVisible():
             pass
         else:
@@ -1984,9 +2023,6 @@ class phPage(QWizardPage):
     def reset_pHpage(self):
         self.setSubTitle("Initially,  the pH profile will be plotted without any depth correction. "
                          "\nHowever, it can be adjusted later.  Press PLOT to start.\n")
-
-        global scalepH
-        scalepH = list()
 
         if 'pH raw data' in results.keys():
             results.pop('pH raw data')
@@ -2000,8 +2036,10 @@ class phPage(QWizardPage):
             results.pop('pH adjusted')
 
         # update status for process control
+        global scalepH
+        scalepH = dict()
         self.status_pH = 0
-        self.scale, scalepH = None, list()
+        self.scale = None
         dfpH_scale = pd.concat([pd.DataFrame([(self.dpH_core[c][n]['pH'].min(), self.dpH_core[c][n]['pH'].max())
                                               for n in self.dpH_core[c].keys()]) for c in self.dpH_core.keys()])
         self.scale0 = dfpH_scale[0].min(), dfpH_scale[1].max()
@@ -2011,6 +2049,7 @@ class phPage(QWizardPage):
         self.continuepH_button.clicked.connect(self.continue_pH)
         self.continuepH_button.setEnabled(True)
         self.adjustpH_button.setEnabled(False)
+        self.updatepH_button.setEnabled(False)
         self.swi_edit.setEnabled(False)
 
         # reset slider
@@ -2022,8 +2061,8 @@ class phPage(QWizardPage):
 
         # clear pH range (scale), SWI correction
         self.swi_edit.setText('--')
-        self.swipH_box.setVisible(True), self.swipH_box.setEnabled(False)
-        self.swipH_box.setCheckState(False)
+        # self.swipH_box.setVisible(True), self.swipH_box.setEnabled(False)
+        # self.swipH_box.setCheckState(False)
 
         # empty figure
         self.axpH.cla()
@@ -2047,7 +2086,7 @@ class phPage(QWizardPage):
 
 
 class AdjustpHWindow(QDialog):
-    def __init__(self, sliderValue, ls_core, dic_pH, scale, figpH, axpH):
+    def __init__(self, sliderValue, ls_core, dic_pH, scale, figpH, axpH, status_pH):
         super().__init__()
         self.initUI()
 
@@ -2055,7 +2094,7 @@ class AdjustpHWindow(QDialog):
         self.Core = min(ls_core, key=lambda x: abs(x - sliderValue))
 
         # get the transmitted data
-        self.figpH, self.axpH, self.dic_pH, self.scaleS0 = figpH, axpH, dic_pH, scale
+        self.figpH, self.axpH, self.dic_pH, self.scaleS0, self.status_pH = figpH, axpH, dic_pH, scale, status_pH
 
         # plot all samples from current core
         fig = plot_adjustpH(core=self.Core, sample=min(self.dic_pH[self.Core].keys()), dfCore=self.dic_pH[self.Core],
@@ -2256,7 +2295,7 @@ class AdjustpHWindow(QDialog):
 
         # update global variable
         global scalepH
-        scalepH = (round(self.scale[0], 2), round(self.scale[1], 2))
+        scalepH[self.Core] = (round(self.scale[0], 2), round(self.scale[1], 2))
 
     def cropDF_pH(self, s):
         if self.ls_cropy:
@@ -2296,9 +2335,8 @@ class AdjustpHWindow(QDialog):
         if self.ls_out:
             dcore_crop = self.popData_pH(dcore_crop=dcore_crop)
 
-        # update the general dictionary
+        # update the general dictionary and store adjusted pH
         self.dic_pH[self.Core][s] = dcore_crop
-        # store adjusted pH
         results['pH adjusted'] = self.dic_pH
 
         # re-draw pH profile plot
@@ -2308,8 +2346,9 @@ class AdjustpHWindow(QDialog):
 
         #  update range for pH plot and plot in main window
         self.pHtrim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
+        ls = '-.' if self.status_pH < 1 else '-'
         fig0 = plot_pHProfile(data_pH=self.dic_pH, core=self.Core, ls_core=self.dic_pH.keys(), scale=self.scale,
-                              fig=self.figpH, ax=self.axpH)
+                              fig=self.figpH, ax=self.axpH, ls=ls, trimexact=True)
         self.figpH.canvas.draw()
 
     def resetPlot(self):
@@ -2319,7 +2358,7 @@ class AdjustpHWindow(QDialog):
         self.hide()
 
 
-def plot_pHProfile(data_pH, core, ls_core, scale, ls='-.', fig=None, ax=None, show=True):
+def plot_pHProfile(data_pH, core, ls_core, scale, ls='-.', fig=None, ax=None, show=True, trimexact=False):
     plt.ioff()
     # identify closest value in list
     core_select = closest_core(ls_core=ls_core, core=core)
@@ -2333,7 +2372,7 @@ def plot_pHProfile(data_pH, core, ls_core, scale, ls='-.', fig=None, ax=None, sh
     ax.invert_yaxis()
 
     if core_select != 0:
-        ax.title.set_text('pH depth profile for core {}'.format(core_select))
+        ax.title.set_text('pH depth profile for {} {}'.format(grp_label, core_select))
         ax.axhline(0, lw=.5, color='k')
         for en, nr in enumerate(data_pH[core_select].keys()):
             lw = 0.75 if ls == '-.' else 1.
@@ -2343,8 +2382,13 @@ def plot_pHProfile(data_pH, core, ls_core, scale, ls='-.', fig=None, ax=None, sh
         ax.legend(frameon=True, fontsize=10)
 
     # update layout
-    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
-    ax.set_xlim(scale_min, scale[1]*1.015)
+    if trimexact is True:
+        scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]
+        scale_max = scale[1]
+    else:
+        scale_min = -1 * scale[1]/100 if scale[0] == 0 else scale[0]*0.995
+        scale_max = scale[1]*1.005
+    ax.set_xlim(scale_min, scale_max)
     fig.tight_layout(pad=1.5)
 
     if show is False:
@@ -2364,7 +2408,7 @@ def plot_adjustpH(core, sample, dfCore, scale, fig, ax):
 def plot_pHUpdate(core, nr, df_pHs, ddcore, scale, fig, ax):
     # clear coordinate system but keep the labels
     ax.cla()
-    ax.title.set_text('pH profile for core {} - sample {}'.format(core, nr))
+    ax.title.set_text('pH profile for {} {} - sample {}'.format(grp_label, core, nr))
     ax.set_xlabel('pH value'), ax.set_ylabel('Depth / µm')
 
     # plotting part
@@ -2375,8 +2419,8 @@ def plot_pHUpdate(core, nr, df_pHs, ddcore, scale, fig, ax):
     ax.plot(df_pHs['pH'], df_pHs.index, lw=0.75, ls='-.', marker='.', ms=4, color=ls_col[pos], alpha=0.75)
 
     # general layout
-    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
-    ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
+    scale_min = -1 * scale[1]/100 if scale[0] == 0 else scale[0]
+    ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1])
     sns.despine(), plt.tight_layout()
     fig.canvas.draw()
     return fig
@@ -2391,7 +2435,7 @@ def GUI_adjustDepth(core, nr, dfCore, scale, fig=None, ax=None, show=True):
         ax.cla()
 
     if core != 0:
-        ax.title.set_text('pH profile for core {} - sample {}'.format(core, nr))
+        ax.title.set_text('pH profile for {} {} - sample {}'.format(grp_label, core, nr))
         ax.set_ylabel('Depth / µm'), ax.set_xlabel('pH value')
 
     # plotting part
@@ -2419,6 +2463,8 @@ def GUI_adjustDepth(core, nr, dfCore, scale, fig=None, ax=None, show=True):
 class h2sPage(QWizardPage):
     def __init__(self, parent=None):
         super(h2sPage, self).__init__(parent)
+        # reset of parameter
+        self.data_key = None
 
         # general layout of the H2S / total sulfide project
         self.setTitle("H2S / total sulfide depth profile")
@@ -2432,7 +2478,8 @@ class h2sPage(QWizardPage):
         self.adjusth2s_button.clicked.connect(self.adjust_H2S)
         self.saveh2s_button.clicked.connect(self.save_H2S)
         self.reseth2s_button.clicked.connect(self.reset_H2Spage)
-        self.swih2s_box.stateChanged.connect(self.enablePlot_swiBoxH2S)
+        self.updateh2s_button.clicked.connect(self.swi_correctionH2S)
+        # self.swih2s_box.stateChanged.connect(self.enablePlot_swiBoxH2S)
 
     def initUI(self):
         # plot window, side panel for user input, and continue button
@@ -2459,10 +2506,10 @@ class h2sPage(QWizardPage):
         self.swih2s_edit.setValidator(QDoubleValidator()), self.swih2s_edit.setAlignment(Qt.AlignRight)
         self.swih2s_edit.setMaximumWidth(100), self.swih2s_edit.setText('--'), self.swih2s_edit.setEnabled(False)
 
-        # option to select the SWI (baseline) from the O2 calculations in case O2 was selected
-        self.swih2s_box = QCheckBox('SWI from O2 analysis', self)
-        self.swih2s_box.setFont(QFont('Helvetica Neue', fs_font))
-        self.swih2s_box.setVisible(True), self.swih2s_box.setEnabled(False)
+        # # option to select the SWI (baseline) from the O2 calculations in case O2 was selected
+        # self.swih2s_box = QCheckBox('SWI from O2 analysis', self)
+        # self.swih2s_box.setFont(QFont('Helvetica Neue', fs_font))
+        # self.swih2s_box.setVisible(True), self.swih2s_box.setEnabled(False)
 
         # Action button
         self.salcon_button = QPushButton('Converter', self)
@@ -2471,9 +2518,12 @@ class h2sPage(QWizardPage):
         self.saveh2s_button.setFixedWidth(100), self.saveh2s_button.setFont(QFont('Helvetica Neue', fs_font))
         self.continueh2s_button = QPushButton('Plot', self)
         self.continueh2s_button.setFixedWidth(100), self.continueh2s_button.setFont(QFont('Helvetica Neue', fs_font))
-        self.adjusth2s_button = QPushButton('Adjustments', self)
+        self.adjusth2s_button = QPushButton('Adjust profile', self)
         self.adjusth2s_button.setFixedWidth(100), self.adjusth2s_button.setEnabled(False)
         self.adjusth2s_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.updateh2s_button = QPushButton('Update SWI', self)
+        self.updateh2s_button.setFixedWidth(100), self.updateh2s_button.setEnabled(False)
+        self.updateh2s_button.setFont(QFont('Helvetica Neue', fs_font))
         self.reseth2s_button = QPushButton('Reset', self)
         self.reseth2s_button.setFixedWidth(100), self.reseth2s_button.setFont(QFont('Helvetica Neue', fs_font))
 
@@ -2481,7 +2531,7 @@ class h2sPage(QWizardPage):
         self.sliderh2s = QSlider(Qt.Horizontal)
         self.sliderh2s.setMinimumWidth(250), self.sliderh2s.setFixedHeight(20)
         self.sldh2s_label = QLabel()
-        self.sldh2s_label.setFixedWidth(50)
+        self.sldh2s_label.setFixedWidth(55)
         self.sldh2s_label.setText('group: --')
 
         # creating window layout
@@ -2508,7 +2558,8 @@ class h2sPage(QWizardPage):
         grid_load.addWidget(swih2s_label, 2, 0)
         grid_load.addWidget(self.swih2s_edit, 2, 1)
         grid_load.addWidget(swih2s_unit_label, 2, 2)
-        grid_load.addWidget(self.swih2s_box, 2, 3)
+        # grid_load.addWidget(self.swih2s_box, 2, 3)
+        grid_load.addWidget(self.updateh2s_button, 2, 3)
         grid_load.addWidget(self.continueh2s_button, 3, 0)
         grid_load.addWidget(self.adjusth2s_button, 3, 1)
         grid_load.addWidget(self.reseth2s_button, 3, 2)
@@ -2523,14 +2574,12 @@ class h2sPage(QWizardPage):
         # plotting area
         self.figh2s, self.axh2s = plt.subplots(figsize=(3, 2))
         self.canvash2s = FigureCanvasQTAgg(self.figh2s)
-        self.axh2s.set_xlabel('H2S / µmol/l'), self.axh2s.set_ylabel('Depth / µm')
+        self.axh2s.set_xlabel('H2S / µmol/L'), self.axh2s.set_ylabel('Depth / µm')
         self.axh2s.invert_yaxis()
         self.figh2s.tight_layout(pad=0.5)
-        # self.figh2s.subplots_adjust(bottom=0.2, right=0.95, top=0.9, left=0.15)
         sns.despine()
 
         H2S_group = QGroupBox("H2S depth profile")
-        # H2S_group.setMinimumWidth(250), \
         H2S_group.setMinimumHeight(300)
         grid_H2S = QGridLayout()
 
@@ -2544,10 +2593,10 @@ class h2sPage(QWizardPage):
 
     def enablePlot_swiBoxH2S(self):
         if self.status_h2s == 1:
-            if self.swih2s_box.checkState() == 0:
-                self.continueh2s_button.setEnabled(True), self.swih2s_edit.setEnabled(True)
-            else:
-                self.continueh2s_button.setEnabled(False)#, self.swih2s_edit.setEnabled(False)
+            # if self.swih2s_box.checkState() == 0:
+            self.continueh2s_button.setEnabled(True), self.swih2s_edit.setEnabled(True)
+            #else:
+            #    self.continueh2s_button.setEnabled(False)#, self.swih2s_edit.setEnabled(False)
 
     def load_H2Sdata(self):
         if self.field("SoftwareFile") == 'True':
@@ -2559,20 +2608,20 @@ class h2sPage(QWizardPage):
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='H2S')
 
-        # !!! TODO: field("SoftwareFile") might be depreciated in the future
         #  prepare file depending on the type
-        if self.field("SoftwareFile") == 'True':
-            ddata = dsheets[sheet_select]
-        else:
-            ddata = dsheets[sheet_select].set_index('Nr')
+        ddata = dsheets[sheet_select].set_index('Nr')
+        global grp_label
+        if grp_label is None:
+            grp_label = ddata.columns[0]
 
         # list all available cores for pH sheet
-        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
+        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]].to_numpy()))
 
         # import all measurements for given parameter
         [self.dH2S_core, ls_nr,
          self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
-        results['H2S raw data'] = self.dH2S_core
+        self.data_key = 'H2S profile raw data'
+        results[self.data_key] = self.dH2S_core
 
     def conductivity_converter(self):
         # open dialog window for conductivity -> salinity conversion
@@ -2584,28 +2633,25 @@ class h2sPage(QWizardPage):
             wConv.show()
 
     def continue_H2S(self):
-        if 'salinity PSU' in results.keys():
-            self.sal_edit.setText(str(results['salinity PSU']))
-        else:
-            self.sal_edit.setText('0.')
+        # get relevant information from previous projects if possible
+        ssal = str(results['salinity PSU']) if 'salinity PSU' in results.keys() else '0.'
+        self.sal_edit.setText(ssal)
 
         # set status for process control
         self.status_h2s = 0
 
         # update subtitle in case the pH profile was present as well
         if 'pH raw data' in results.keys():
-            self.setSubTitle("The total sulfide is calculated based on H2S as well as the temperature and salinity.  "
-                             "Please make sure both parameters are correct.\n")
+            self.setSubTitle("You reached the sediment-water interface correction.  Either choose the correction based "
+                             "on the surface found in the O2 project or manually adjust the surface.\n")
 
-        # load data
+        # load data - mV and µM
         self.load_H2Sdata()
 
-        # ----------------------------------------------------------------------------------
         # adjust all the core plots to the same x-scale (uncalibrated)
         c = list(self.dH2S_core.keys())[0]
         nr = list(self.dH2S_core[c].keys())[0]
-
-        # columns: Core, H2S_uM
+        # columns: Core, H2S_mV
         self.colH2S = self.dH2S_core[c][nr].columns[1]
         dfH2S_scale = pd.concat([pd.DataFrame([(self.dH2S_core[c][n][self.colH2S].min(),
                                                 self.dH2S_core[c][n][self.colH2S].max())
@@ -2614,21 +2660,23 @@ class h2sPage(QWizardPage):
         self.scale = self.scale0
 
         # plot the pH profile for the first core
-        figH2S0 = plot_H2SProfile(data_H2S=self.dH2S_core, core=min(self.ls_core), ls_core=self.ls_core,
-                                  scale=self.scale0, fig=self.figh2s, ax=self.axh2s, col=self.colH2S)
+        figH2S0 = plot_H2SProfile(data_H2S=self.dH2S_core, core=min(self.ls_core), ls_core=self.ls_core, col=self.colH2S,
+                                  scale=self.scale0, dobj_hidH2S=dobj_hidH2S, fig=self.figh2s, ax=self.axh2s)
 
         # slider initialized to first core
         self.sliderh2s.setMinimum(int(min(self.ls_core))), self.sliderh2s.setMaximum(int(max(self.ls_core)))
         self.sliderh2s.setValue(int(min(self.ls_core)))
-        self.sldh2s_label.setText('core: {}'.format(int(min(self.ls_core))))
+        self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
         # when slider value change (on click), return new value and update figure plot
         self.sliderh2s.valueChanged.connect(self.sliderh2s_update)
 
-        # update continue button to "update" in case the swi shall be updated
+        # allow profile data adjustment and SWI correction of raw data
         self.adjusth2s_button.setEnabled(True)
+        self.swih2s_edit.setEnabled(True), self.updateh2s_button.setEnabled(True)
         self.continueh2s_button.disconnect()
 
+        # decide to which direction the code shall continue
         if 'pH raw data' in results.keys():
             # get information about correlation pH to H2S + pre-check if the excel file contains a correlation sheet
             ddata_all = pd.read_excel(self.field("Data"), sheet_name=None)
@@ -2637,7 +2685,6 @@ class h2sPage(QWizardPage):
 
             # calculation of total sulfide possible
             self.continueh2s_button.clicked.connect(self.continue_H2SII)
-
         else:
             # skip total sulfide but allow swi correction
             self.continueh2s_button.clicked.connect(self.continue_H2SIII)
@@ -2663,15 +2710,19 @@ class h2sPage(QWizardPage):
         pK1 = -98.08 + (5765.4/tempK) + 15.04555*np.log(tempK) + -0.157*(sal_pmill**0.5) + 0.0135*sal_pmill
         K1 = 10**(-pK1)
 
+        # get appropriate column of H2S
+        for c in self.dH2S_core[coreh2s][sampleS].columns:
+            if 'M' in c:
+                col = c
+        data = self.dH2S_core[coreh2s][sampleS][col] if col else self.dH2S_core[coreh2s][sampleS]
+
         # generate total sulfide DF
-        df = pd.concat([self.dH2S_core[coreh2s][sampleS], pH_coreS], axis=1)
-        df['total sulfide µmol/l'] = df[self.colH2S] * (1 + (K1 / 10**(-df['pH'])))
-
+        df = pd.concat([data, pH_coreS], axis=1)
+        df['total sulfide_µmol/L'] = df[self.colH2S] * (1 + (K1 / 10**(-df['pH'])))
         # zero correction -> everything that is negative is set to 0
-        df_ = df['total sulfide µmol/l'].copy()
+        df_ = df['total sulfide_µmol/L'].copy()
         df_[df_ < 0] = 0
-        df['total sulfide zero corr'] = df_
-
+        df['total sulfide zero corr_µmol/L'] = df_.dropna()
         return df
 
     def precheck_totalSulfide(self, ddata_all):
@@ -2712,6 +2763,7 @@ class h2sPage(QWizardPage):
 
     def calc_total_sulfide(self):
         # convert parameter
+        print(2731, 'total sulfide')
         tempK, sal_pmill = float(self.tempC_edit.text())+convC2K, float(self.sal_edit.text())
         df_corr = results['pH - H2S correlation']
 
@@ -2739,45 +2791,35 @@ class h2sPage(QWizardPage):
 
     def continue_H2SII(self):
         # update subtitle for swi correction
-        self.setSubTitle("You reached the sediment-water interface correction.  Either choose the correction based on "
-                         "the surface found in the O2 project or manually adjust the surface.\n")
+        self.setSubTitle("The total sulfide is calculated based on H2S as well as the temperature and salinity.  "
+                         "Please make sure both parameters are correct..\n")
 
         # update status for process control
-        self.status_h2s = 0
-
-        # update layout
-        self.swih2s_box.setEnabled(True) if self.field("SWI pH as o2") == 'True' else self.swih2s_box.setEnabled(False)
-        self.swih2s_edit.setEnabled(True)
-
+        self.status_h2s = 1
         # identify closest value in list
         core_select = closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
 
         # convert H2S into total sulfide in case pH was measured
         dsulfide = self.calc_total_sulfide()
-        results['H2S total sulfide'] = dsulfide
+        self.data_key = 'H2S profile total sulfide'
+        results[self.data_key] = dsulfide
 
         # update pH profile plot for the first core
-        if 'H2S total sulfide' in results.keys():
-            para = 'total sulfide zero corr'
-            dscale = dict()
-            for c in results['H2S total sulfide'].keys():
-                l = [(results['H2S total sulfide'][c][nr][para].min(), results['H2S total sulfide'][c][nr][para].max())
-                     for nr in results['H2S total sulfide'][c].keys()]
-                dscale[c] = pd.DataFrame((np.min(l), np.max(l)))
-            scale = (pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
-        else:
-            scale = self.scale0
-        self.scaleS0 = scale
-
+        para = 'total sulfide zero corr_µmol/L'
+        dscale = dict()
+        for c in dsulfide.keys():
+            l = [(dsulfide[c][nr][para].min(), dsulfide[c][nr][para].max()) for nr in dsulfide[c].keys()]
+            dscale[c] = pd.DataFrame((np.min(l), np.max(l)))
+        self.scaleS0 = (pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
+        self.col2 = para
         # update column name that shall be plotted
-        self.col2 = 'total sulfide zero corr'
-        figH2S0 = plot_H2SProfile(data_H2S=dsulfide, core=core_select, ls_core=self.ls_core, scale=scale,
-                                  fig=self.figh2s, ax=self.axh2s, col=self.col2, ls='-')
+        figH2S0 = plot_H2SProfile(data_H2S=dsulfide, core=core_select, ls_core=self.ls_core, scale=self.scaleS0, ls='-',
+                                  fig=self.figh2s, ax=self.axh2s, col=self.col2, dobj_hidH2S=dobj_hidH2S)
 
         # slider initialized to first core
         self.sliderh2s.setMinimum(int(min(self.ls_core))), self.sliderh2s.setMaximum(int(max(self.ls_core)))
         self.sliderh2s.setValue(int(min(self.ls_core)))
-        self.sldh2s_label.setText('core: {}'.format(int(min(self.ls_core))))
+        self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
         # when slider value change (on click), return new value and update figure plot
         self.sliderh2s.valueChanged.connect(self.sliderh2s_updateII)
@@ -2794,7 +2836,7 @@ class h2sPage(QWizardPage):
         self.status_h2s = 2
 
         # update layout
-        self.swih2s_box.setEnabled(True) if self.field("SWI pH as o2") == 'True' else self.swih2s_box.setEnabled(False)
+        # self.swih2s_box.setEnabled(True) if self.field("SWI pH as o2") == 'True' else self.swih2s_box.setEnabled(False)
         self.swih2s_edit.setEnabled(True)
 
         # update subtitle for swi correction
@@ -2804,70 +2846,82 @@ class h2sPage(QWizardPage):
         # identify closest value in list
         core_select = closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
         # identify data, that shall be plotted
-        self.data = results['H2S total sulfide'] if 'H2S total sulfide' in results.keys() else self.dH2S_core
+        self.data = results['H2S profile total sulfide'] if 'H2S profile total sulfide' in results.keys() else self.dH2S_core
 
         # check whether a (manual) swi correction is required. SWI correction only for current core
-        self.swi_correctionH2S()
+        # self.swi_correctionH2S()
 
         # plot the pH profile for the first core
-        if 'H2S total sulfide' in results.keys():
-            para = 'total sulfide zero corr'
+        if 'H2S profile total sulfide' in results.keys():
+            para = 'total sulfide zero corr_µmol/L'
             dscale = dict()
-            for c in results['H2S total sulfide'].keys():
-                l = [(results['H2S total sulfide'][c][nr][para].min(), results['H2S total sulfide'][c][nr][para].max())
-                     for nr in results['H2S total sulfide'][c].keys()]
+            for c in results['H2S profile total sulfide'].keys():
+                l = [(results['H2S profile total sulfide'][c][nr][para].min(),
+                      results['H2S profile total sulfide'][c][nr][para].max())
+                     for nr in results['H2S profile total sulfide'][c].keys()]
                 dscale[c] = pd.DataFrame((np.min(l), np.max(l)))
             scale = (pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
         else:
             scale = self.scale0
         self.scaleS0 = scale
-        figH2S = plot_H2SProfile(data_H2S=self.data, core=core_select, ls_core=self.ls_core, scale=self.scaleS0,
-                                 fig=self.figh2s, ax=self.axh2s, col=self.colH2S, ls='-')
+        figH2S = plot_H2SProfile(data_H2S=self.data, core=core_select, ls_core=self.ls_core, scale=self.scaleS0, ls='-',
+                                 fig=self.figh2s, ax=self.axh2s, col=self.colH2S, dobj_hidH2S=dobj_hidH2S)
         self.figh2s.canvas.draw()
 
     def swi_correctionH2S(self):
+        # identify the data to adjust (SWI)
+        data = results[self.data_key]
+
         # identify closest value in list
         core_select = min(self.ls_core, key=lambda x: abs(x - self.sliderh2s.value()))
-        if self.swih2s_box.checkState() == 0:
-            self.status_h2s = 0
-            self.continueh2s_button.setEnabled(True)
+        self.status_h2s = 0
+        self.continueh2s_button.setEnabled(True)
 
-            if '--' in self.swih2s_edit.text() or len(self.swih2s_edit.text()) == 0:
-                pass
-            else:
-                # correction of manually selected baseline
-                for s in self.data[core_select].keys():
-                    # H2S correction
-                    ynew = self.data[core_select][s].index - float(self.swih2s_edit.text())
-                    self.data[core_select][s].index = ynew
-                    # pH correction
-                    ynew = self.data[core_select][s].index - float(self.swih2s_edit.text())
+        if '--' in self.swih2s_edit.text() or len(self.swih2s_edit.text()) == 0:
+            pass
         else:
-            dpenH2S_av = dict()
-            if 'O2 penetration depth' in results.keys():
-                for c in results['O2 penetration depth'].keys():
-                    ls = list()
-                    [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
-                     if "penetration" in i]
-                    l = pd.DataFrame([results['O2 penetration depth'][c][s]
-                                      for s in results['O2 penetration depth'][c].keys()
-                                      if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
-                    dpenH2S_av[c] = l.mean()
-
-            # SWI correction as for O2 project
-            for c in self.data.keys():
-                for s in self.data[c].keys():
-                    xnew = [i - dpenH2S_av[c]['Depth (µm)'] for i in self.data[c][s].index]
-                    self.data[c][s].index = xnew
-
-            # SWI correction applied only once
-            self.continueh2s_button.setEnabled(False)
+            # correction of manually selected baseline
+            for s in data[core_select].keys():
+                # H2S correction
+                ynew = data[core_select][s].index - float(self.swih2s_edit.text())
+                data[core_select][s].index = ynew
+                # pH correction
+                ynew = data[core_select][s].index - float(self.swih2s_edit.text())
+        # else:
+        #     dpenH2S_av = dict()
+        #     if 'O2 penetration depth' in results.keys():
+        #         for c in results['O2 penetration depth'].keys():
+        #             ls = list()
+        #             [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
+        #              if "penetration" in i]
+        #             l = pd.DataFrame([results['O2 penetration depth'][c][s]
+        #                               for s in results['O2 penetration depth'][c].keys()
+        #                               if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
+        #             dpenH2S_av[c] = l.mean()
+        #
+        #     # SWI correction as for O2 project
+        #     for c in self.data.keys():
+        #         for s in self.data[c].keys():
+        #             xnew = [i - dpenH2S_av[c]['Depth (µm)'] for i in self.data[c][s].index]
+        #             self.data[c][s].index = xnew
+        #
+        #     # SWI correction applied only once
+        #     self.continueh2s_button.setEnabled(False)
 
         # add to results dictionary
-        if 'H2S total sulfide' in results.keys():
-            results['H2S total sulfide swi corrected'] = self.data
+        if 'H2S profile total sulfide' in results.keys():
+            self.data_key = 'H2S profile total sulfide swi corrected'
+            results[self.data_key] = data
         else:
-            results['H2S swi corrected'] = self.data
+            self.data_key = 'H2S profile swi corrected'
+            results[self.data_key] = data
+
+        # plot the pH profile for the first core
+        figH2S0 = plot_H2SProfile(data_H2S=data, core=core_select, ls_core=self.ls_core, col=self.colH2S, ax=self.axh2s,
+                                  scale=self.scale0, dobj_hidH2S=dobj_hidH2S, fig=self.figh2s)
+        # slider initialized to first core
+        self.sliderh2s.setValue(int(core_select))
+        self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], int(core_select)))
 
     def sliderh2s_update(self):
         if self.ls_core:
@@ -2876,16 +2930,20 @@ class h2sPage(QWizardPage):
 
             # update slider position and label
             self.sliderh2s.setValue(int(core_select))
-            self.sldh2s_label.setText('core: {}'.format(core_select))
+            self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], core_select))
 
             # update plot according to selected core
-            if len(scaleh2s) == 0 or self.status_h2s == 0:
-                scale_plot = self.scale0
-            else:
-                scale_plot = scaleh2s
-            figH2S = plot_H2SProfile(data_H2S=self.dH2S_core, core=core_select, ls_core=self.ls_core, scale=scale_plot,
-                                     fig=self.figh2s, ax=self.axh2s, col=self.colH2S,  ls='-')
-            self.figh2s.canvas.draw()
+            if self.data_key:
+                if len(scaleh2s) == 0 or self.status_h2s == 0:
+                    scale_plot = self.scale0
+                else:
+                    scale_plot = scaleh2s
+
+                ls = '-.' if self.status_h2s < 1 else '-'
+                figH2S = plot_H2SProfile(data_H2S=results[self.data_key], core=core_select, scale=scale_plot, ls=ls,
+                                         fig=self.figh2s, ax=self.axh2s, dobj_hidH2S=dobj_hidH2S, ls_core=self.ls_core,
+                                         col=self.colH2S)
+                self.figh2s.canvas.draw()
 
     def sliderh2s_updateII(self):
         if self.ls_core:
@@ -2894,29 +2952,31 @@ class h2sPage(QWizardPage):
 
             # update slider position and label
             self.sliderh2s.setValue(int(core_select))
-            self.sldh2s_label.setText('core: {}'.format(core_select))
+            self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], core_select))
 
             # update plot according to selected core
-            if 'H2S total sulfide' in results.keys():
-                para, dd, dscale = 'total sulfide zero corr', results['H2S total sulfide'], dict()
+            if 'H2S profile total sulfide' in results.keys():
+                para, dd, dscale = 'total sulfide zero corr_µmol/L', results['H2S profile total sulfide'], dict()
                 for c in dd.keys():
                     l = [(dd[c][nr][para].min(), dd[c][nr][para].max()) for nr in dd[c].keys()]
                     dscale[c] = pd.DataFrame((np.min(l), np.max(l)))
                 scale_plot = (pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
             else:
                 scale_plot = self.scale0 if len(scaleh2s) == 0 or self.status_h2s == 0 else scaleh2s
-            figH2S = plot_H2SProfile(data_H2S=results['H2S total sulfide'], core=core_select, ls_core=self.ls_core,
-                                     scale=scale_plot, fig=self.figh2s, ax=self.axh2s, col=self.col2, ls='-')
-            self.figh2s.canvas.draw()
+            if self.data_key:
+                figH2S = plot_H2SProfile(data_H2S=results[self.data_key], core=core_select, ls_core=self.ls_core,
+                                         col=self.col2, scale=scale_plot, fig=self.figh2s, ax=self.axh2s, ls='-',
+                                         dobj_hidH2S=dobj_hidH2S)
+                self.figh2s.canvas.draw()
 
     def adjust_H2S(self):
         # open dialog window to adjust data presentation
-        self.status_h2s = 1.5
+        # self.status_h2s = 1.5
 
         global wAdjustS
         res_pH = results['pH - H2S correlation'] if 'pH - H2S correlation' in results.keys() else None
         wAdjustS = AdjustpHWindowS(self.sliderh2s.value(), self.ls_core, self.dH2S_core, self.scale, self.colH2S,
-                                   self.figh2s, self.axh2s, res_pH, self.swih2s_box, self.swih2s_edit, 0)
+                                   self.figh2s, self.axh2s, res_pH, self.swih2s_edit, 0)
         if wAdjustS.isVisible():
             pass
         else:
@@ -2924,12 +2984,11 @@ class h2sPage(QWizardPage):
 
     def adjust_H2SII(self):
         # open dialog window to adjust data presentation
-        self.status_h2s = 2.5
         res_pH = results['pH - H2S correlation'] if 'pH - H2S correlation' in results.keys() else None
-
+        # dataK = 'H2S profile total sulfide' if 'H2S profile total sulfide' in results.keys() else
         global wAdjustS
-        wAdjustS = AdjustpHWindowS(self.sliderh2s.value(), self.ls_core, results['H2S total sulfide'], self.scaleS0,
-                                   self.col2, self.figh2s, self.axh2s, res_pH, self.swih2s_box, self.swih2s_edit, 1)
+        wAdjustS = AdjustpHWindowS(self.sliderh2s.value(), self.ls_core, results[self.data_key], self.scaleS0, self.col2,
+                                   self.figh2s, self.axh2s, res_pH, self.swih2s_edit, self.status_h2s)
         if wAdjustS.isVisible():
             pass
         else:
@@ -2943,20 +3002,19 @@ class h2sPage(QWizardPage):
         global scaleh2s
         scaleh2s = list()
 
-        if 'H2S raw data' in results.keys():
-            results.pop('H2S raw data')
+        if 'H2S profile raw data' in results.keys():
+            results.pop('H2S profile raw data')
         if 'pH - H2S correlation' in results.keys():
             results.pop('pH - H2S correlation')
-        if 'H2S total sulfide' in results.keys():
-            results.pop('H2S total sulfide')
-        if 'H2S total sulfide swi corrected' in results.keys():
-            results.pop('H2S total sulfide swi corrected')
-        if 'H2S swi corrected' in results.keys():
-            results.pop('H2S swi corrected')
-
+        if 'H2S profile total sulfide' in results.keys():
+            results.pop('H2S profile total sulfide')
+        if 'H2S profile total sulfide swi corrected' in results.keys():
+            results.pop('H2S profile total sulfide swi corrected')
+        if 'H2S profile swi corrected' in results.keys():
+            results.pop('H2S profile swi corrected')
 
         # update status for process control
-        self.status_h2s = 0
+        self.status_h2s, self.data_key = 0, None
         self.scale, scaleh2s = None, list()
         if self.dH2S_core:
             dfH2S_scale = pd.concat([pd.DataFrame([(self.dH2S_core[c][n][self.colH2S].min(),
@@ -2974,6 +3032,7 @@ class h2sPage(QWizardPage):
         self.continueh2s_button.setEnabled(True)
         self.adjusth2s_button.setEnabled(False)
         self.swih2s_edit.setEnabled(False)
+        self.updateh2s_button.setEnabled(False)
 
         # reset slider
         self.count = 0
@@ -2984,8 +3043,8 @@ class h2sPage(QWizardPage):
 
         # clear pH range (scale), SWI correction
         self.swih2s_edit.setText('--')
-        self.swih2s_box.setVisible(True), self.swih2s_box.setEnabled(False)
-        self.swih2s_box.setCheckState(False)
+        # self.swih2s_box.setVisible(True), self.swih2s_box.setEnabled(False)
+        # self.swih2s_box.setCheckState(False)
 
         # empty figure
         self.axh2s.cla()
@@ -3014,15 +3073,13 @@ class h2sPage(QWizardPage):
 
 
 class AdjustpHWindowS(QDialog):
-    def __init__(self, sliderValue, ls_core, dic_H2S, scale, col, figH2S, axH2S, df_correl, swih2s_box, swih2s_edit,
-                 status):
+    def __init__(self, sliderValue, ls_core, dic_H2S, scale, col, figH2S, axH2S, df_correl, swih2s_edit, status):
         super().__init__()
         self.initUI()
 
         # get the transmitted data
         self.figH2S, self.axH2S, self.dic_H2S, self.scaleS0, self.colH2S = figH2S, axH2S, dic_H2S, scale, col
-        self.df_correl, self.ls_core, self.swih2s_box, self.status_ph = df_correl, ls_core, swih2s_box, status
-        self.swih2s_edit = swih2s_edit
+        self.df_correl, self.ls_core, self.swih2s_edit, self.status_ph = df_correl, ls_core, swih2s_edit, status
         self.ls = '-.' if self.status_ph == 0 else '-'
 
         # return current core - and get the samples to plot (via slider selection)
@@ -3067,7 +3124,7 @@ class AdjustpHWindowS(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Adjustment of data presentation")
-        self.setGeometry(650, 50, 500, 300)
+        self.setGeometry(650, 75, 500, 600) # position (x,y), width, height
 
         # add description about how to use this window (slider, outlier detection, trim range)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
@@ -3083,12 +3140,11 @@ class AdjustpHWindowS(QDialog):
         self.sldH2S1_label.setFixedWidth(70), self.sldH2S1_label.setText('sample: --')
 
         # plot individual sample
-        self.figH2Ss, self.axH2Ss = plt.subplots(figsize=(3, 2))
+        self.figH2Ss, self.axH2Ss = plt.subplots(figsize=(3, 2.5))
         self.figH2Ss.set_facecolor("none")
         self.canvasH2Ss = FigureCanvasQTAgg(self.figH2Ss)
         self.axH2Ss.set_xlabel('H2S / µmol/L'), self.axH2Ss.set_ylabel('Depth / µm')
         self.axH2Ss.invert_yaxis()
-        #self.figH2Ss.tight_layout(pad=0.5)
         self.figH2Ss.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15)
         sns.despine()
 
@@ -3127,7 +3183,6 @@ class AdjustpHWindowS(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        # plotGp.setMinimumWidth(250), \
         plotGp.setMinimumHeight(300)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
@@ -3143,7 +3198,6 @@ class AdjustpHWindowS(QDialog):
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
         naviGp.setFont(QFont('Helvetica Neue', 12))
-        #naviGp.setMinimumWidth(300),\
         naviGp.setFixedHeight(75)
         gridNavi = QGridLayout()
         vbox2_bottom.addWidget(naviGp)
@@ -3309,55 +3363,53 @@ class AdjustpHWindowS(QDialog):
             pH_sample = None
         else:
             pH_sample = self.df_correl[self.df_correl['H2S Nr'] == s]['pH Nr'].to_numpy()[0]
-        # pH_sample = self.df_correl[self.df_correl['H2S Nr'] == s]['pH Nr'].to_numpy()[0] if self.df_correl else None
         self.pH_data = results['pH raw data'] if 'pH raw data' in results.keys() else None
 
-        if 'H2S swi corrected pH' in results and self.pH_data:
+        if 'H2S profile swi corrected pH' in results and self.pH_data:
             self.swi_correctionpHII()
         fig, self.ax1 = plot_H2SUpdate(core=self.Core, nr=s, df_H2Ss=dcore_crop, ddcore=self.dic_H2S[self.Core],
                                        scale=self.scale, ax=self.axH2Ss, fig=self.figH2Ss, col=self.colH2S,
-                                       pH=self.pH_data, pHnr=pH_sample, ax1=self.ax1)
+                                       pH=self.pH_data, pHnr=pH_sample, ax1=self.ax1, trimexact=True)
         self.figH2Ss.canvas.draw()
 
         #  update range for pH plot and plot in main window
         self.H2Strim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
         fig0 = plot_H2SProfile(data_H2S=self.dic_H2S, core=self.Core, ls_core=self.dic_H2S.keys(), scale=self.scale,
-                               fig=self.figH2S, ax=self.axH2S, col=self.colH2S, ls=self.ls)
+                               fig=self.figH2S, ax=self.axH2S, col=self.colH2S, dobj_hidH2S=dobj_hidH2S, ls=self.ls)
         self.figH2S.canvas.draw()
         self.status_ph += 1
 
     def swi_correctionpHII(self):
         # identify closest value in list
         core_select = min(self.ls_core, key=lambda x: abs(x - self.slider1H2S.value()))
-        if self.swih2s_box.checkState() == 0:
-            if '--' in self.swih2s_edit.text() or len(self.swih2s_edit.text()) == 0:
-                pass
-            else:
-                # correction of manually selected baseline
-                for s in self.pH_data[core_select].keys():
-                    ynew = self.pH_data[core_select][s].index - float(self.swih2s_edit.text())
+        # if self.swih2s_box.checkState() == 0:
+        if '--' in self.swih2s_edit.text() or len(self.swih2s_edit.text()) == 0:
+            pass
         else:
-            dpenH2S_av = dict()
-            for c in results['O2 penetration depth'].keys():
-                ls = list()
-                [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
-                 if "penetration" in i]
-                l = pd.DataFrame([results['O2 penetration depth'][c][s]
-                                  for s in results['O2 penetration depth'][c].keys()
-                                  if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
-                dpenH2S_av[c] = l.mean()
-
-            # SWI correction as for O2 project
-            for c in self.pH_data.keys():
-                for s in self.pH_data[c].keys():
-                    xnew = [i - dpenH2S_av[c]['Depth (µm)'] for i in self.pH_data[c][s].index]
-                    self.pH_data[c][s].index = xnew
+            # correction of manually selected baseline
+            for s in self.pH_data[core_select].keys():
+                ynew = self.pH_data[core_select][s].index - float(self.swih2s_edit.text())
+        # else:
+        #     dpenH2S_av = dict()
+        #     for c in results['O2 penetration depth'].keys():
+        #         ls = list()
+        #         [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
+        #          if "penetration" in i]
+        #         l = pd.DataFrame([results['O2 penetration depth'][c][s]
+        #                           for s in results['O2 penetration depth'][c].keys()
+        #                           if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
+        #         dpenH2S_av[c] = l.mean()
+            # # SWI correction as for O2 project
+            # for c in self.pH_data.keys():
+            #     for s in self.pH_data[c].keys():
+            #         xnew = [i - dpenH2S_av[c]['Depth (µm)'] for i in self.pH_data[c][s].index]
+            #         self.pH_data[c][s].index = xnew
 
         # add to results dictionary
-        if 'H2S total sulfide' in results.keys():
-            results['H2S total sulfide swi corrected pH'] = self.pH_data
+        if 'H2S profile total sulfide' in results.keys():
+            results['H2S profile total sulfide swi corrected pH'] = self.pH_data
         else:
-            results['H2S swi corrected pH'] = self.pH_data
+            results['H2S profile swi corrected pH'] = self.pH_data
 
     def resetPlotH2S(self):
         print('start all over again and use the raw data')
@@ -3366,31 +3418,102 @@ class AdjustpHWindowS(QDialog):
         self.hide()
 
 
-def plot_H2SProfile(data_H2S, core, ls_core, scale, col, ls='-.', fig=None, ax=None, show=True):
+def plot_H2SProfile(data_H2S, core, ls_core, scale, col, dobj_hidH2S, ls='-.', fig=None, ax=None, show=True):
     plt.ioff()
+    lines = list()
     # identify closest value in list and the plotted analyte
     core_select = closest_core(ls_core=ls_core, core=core)
 
     s0 = list(data_H2S[core_select].keys())[0]
-    para = 'total sulfide zero corr' if 'total sulfide zero corr' in data_H2S[core_select][s0].columns else col
+    para = 'total sulfide zero corr_µmol/L' if 'total sulfide zero corr_µmol/L' in data_H2S[core_select][s0].columns else col
+    unit = col.split('_')[1]
 
     # initialize figure
     if ax is None:
         fig, ax = plt.subplots(figsize=(3, 4))
     else:
         ax.cla()
-    ax.set_xlabel('{} / µmol/L'.format(para.split('zero')[0].split('_')[0])), ax.set_ylabel('Depth / µm')
+    ax.set_xlabel('{} / {}'.format(para.split('zero')[0].split('_')[0], unit)), ax.set_ylabel('Depth / µm')
     ax.invert_yaxis()
 
     if core_select != 0:
-        ax.title.set_text('{} depth profile for core {}'.format(para.split('zero')[0].split('_')[0], core_select))
+        ax.title.set_text('{} depth profile for {} {}'.format(para.split('zero')[0].split('_')[0], grp_label,
+                                                              core_select))
         ax.axhline(0, lw=.5, color='k')
+
+        # additional warning
+        if len(data_H2S[core_select].keys()) >= len(ls_col):
+            msgBox = QMessageBox()
+            msgBox.setIcon(QMessageBox.Warning)
+            msgBox.setText("Number of samples exceeds number of available colors to visualize in the same plot. "
+                           "Please update ls_col")
+            msgBox.setFont(QFont('Helvetica Neue', 11))
+            msgBox.setWindowTitle("Warning")
+            msgBox.setStandardButtons(QMessageBox.Ok)
+
         for en, nr in enumerate(data_H2S[core_select].keys()):
+            if core_select in dobj_hidH2S.keys():
+                alpha_ = .0 if 'sample ' + str(nr) in dobj_hidH2S[core_select] else .6
+            else:
+                alpha_ = .6
             df = data_H2S[core_select][nr][para].dropna()
             mark = '.' if ls == '-.' else None
             lw = 1.0 if ls == '-.' else 0.75
-            ax.plot(df, df.index, lw=lw, ls=ls, marker=mark, color=ls_col[en], alpha=0.75, label='sample ' + str(nr))
-        ax.legend(frameon=True, fontsize=10)
+            if en <= len(ls_col):
+                line, = ax.plot(df, df.index, lw=lw, ls=ls, marker=mark, color=ls_col[en], alpha=alpha_,
+                                label='sample ' + str(nr))
+                lines.append(line)
+        leg = ax.legend(frameon=True, fancybox=True)
+
+        # ------------------------------------------------------------------
+        # combine legend
+        lined = dict()
+        for legline, origline in zip(leg.get_lines(), lines):
+            legline.set_picker(5)  # 5 pts tolerance
+            lined[legline] = origline
+
+        # picker - hid curves in plot
+        def onpick(event):
+            ls_hid = dobj_hidH2S[core_select] if core_select in dobj_hidH2S.keys() else list()
+            ls_hid = list(dict.fromkeys(ls_hid))
+
+            # on the pick event, find the orig line corresponding to the legend proxy line, and toggle the visibility
+            legline = event.artist
+            if legline in lined:
+                origline = lined[legline]
+
+                # handle initial curve visibility
+                curve_vis = not origline.get_visible()
+
+                # handle hidden object list
+                if origline.get_label() in ls_hid:
+                    # find position of label and pop/remove
+                    pos = ls_hid.index(origline.get_label())
+                    ls_hid.pop(pos)
+                    # update curve visibility accordingly
+                    curve_vis = True
+                else:
+                    ls_hid.append(origline.get_label())
+
+                # handle legend label visibility - check the number of same sample entries
+                ls_crop = list(dict.fromkeys(ls_hid))
+                ls_hid_split = dict(map(lambda c: (c, [i for i, val in enumerate(ls_hid) if val == c]), ls_crop))
+                for s in ls_hid_split.keys():
+                    if len(ls_hid_split[s]) % 2 == 0:
+                        curve_vis = not curve_vis
+
+                legline.set_alpha(1.0 if curve_vis else 0.2)
+                alpha_ = .6 if curve_vis is True else 0.
+                origline.set_visible(curve_vis)
+                origline.set_alpha(alpha_)
+
+                # collect all hidden curves
+                ls_hid = list(dict.fromkeys(ls_hid))
+                dobj_hidH2S[core_select] = ls_hid
+            fig.canvas.draw()
+
+        # Call click func
+        fig.canvas.mpl_connect('pick_event', onpick)
 
     # update layout
     scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
@@ -3412,7 +3535,7 @@ def plot_adjustH2S(core, sample, dfCore, col, scale, pH, pH_sample, fig, ax, ax1
     return fig, ax1
 
 
-def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1=None):
+def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1=None, trimexact=False):
     # clear coordinate system but keep the labels
     ax.cla()
     if pH:
@@ -3420,7 +3543,7 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1
         ax1.set_xlabel('pH value')
     else:
         ax1 = None
-    ax.title.set_text('H2S profile for core {} - sample {}'.format(core, nr))
+    ax.title.set_text('H2S profile for {} {} - sample {}'.format(grp_label, core, nr))
     ax.set_xlabel('H2S / µmol/L'), ax.set_ylabel('Depth / µm')
 
     # plotting part
@@ -3445,8 +3568,9 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1
                  ls='--', color='#971EB3', alpha=0.75)
 
     # general layout
-    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
-    ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
+    scale_min = scale[0] if trimexact is True else -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
+    scale_max = scale[1] if trimexact is True else scale[1]*1.015
+    ax.invert_yaxis(), ax.set_xlim(scale_min, scale_max)
     sns.despine()
     if pH:
         ax.spines['top'].set_visible(True)
@@ -3457,6 +3581,8 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1
 
 def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, fig=None, ax=None, ax1=None, show=True):
     plt.ioff()
+    unit = col.split('_')[1]
+
     # initialize figure plot
     if ax is None:
         fig, ax = plt.subplots(figsize=(5, 3))
@@ -3465,16 +3591,15 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, fig=Non
     if pH:
         if ax1 is None:
             ax1 = ax.twiny()
-            ax1.set_xlabel('pH value')
         else:
             ax1.clear()
-            ax1.set_xlabel('pH value')
+        ax1.set_xlabel('pH value')
     else:
         ax1 = None
 
     if core != 0:
-        ax.title.set_text('H2S profile for core {} - sample {}'.format(core, nr))
-        ax.set_ylabel('Depth / µm'), ax.set_xlabel('H2S / µmol/L')
+        ax.title.set_text('H2S profile for {} {} - sample {}'.format(grp_label, core, nr))
+        ax.set_ylabel('Depth / µm'), ax.set_xlabel('H2S / {}'.format(unit))
 
     # plotting part
     ax.axhline(0, lw=.5, color='k')
@@ -3483,22 +3608,11 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, fig=Non
     for en in enumerate(dfCore.keys()):
         if en[1] == nr:
             pos = en[0]
-
     ax.plot(dfCore[nr][col], dfCore[nr].index, lw=0.75, ls='-.', marker='.', ms=4, color=ls_col[pos], alpha=0.75)
 
     if pH:
-        if 'pH swi depth' in results.keys():
-            if core in results['pH swi depth']:
-                if isinstance(results['pH swi depth'][core], float):
-                    corr = results['pH swi depth'][core]
-                else:
-                    corr = results['pH swi depth'][core]['Depth (µm)']
-            else:
-                corr = 0
-        else:
-            corr = 0
-        # correlated pH sample Nr.
-        ax1.plot(results['pH raw data'][core][pHnr]['pH'], results['pH raw data'][core][pHnr].index+corr, lw=0.75,
+        # correlated pH sample Nr. - use the corrected profiles
+        ax1.plot(results['pH raw data'][core][pHnr]['pH'], results['pH raw data'][core][pHnr].index, lw=0.75,
                  ls='--', color='#971EB3', alpha=0.75)
 
     # general layout
@@ -3640,12 +3754,11 @@ class epPage(QWizardPage):
         # pre-check whether EP_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='EP')
 
-        # !!! TODO: field("SoftwareFile") might be depreciated in the future
         #  prepare file depending on the type
-        if self.field("SoftwareFile") == 'True':
-            ddata = dsheets[sheet_select]
-        else:
-            ddata = dsheets[sheet_select].set_index('Nr')
+        ddata = dsheets[sheet_select].set_index('Nr')
+        global grp_label
+        if grp_label is None:
+            grp_label = ddata.columns[0]
 
         # list all available cores for pH sheet (in timely order, e.g., not ordered in ascending/ descending order)
         self.ls_core = list(dict.fromkeys(ddata[ddata.columns[1]].to_numpy()))
@@ -4293,7 +4406,7 @@ def plot_initalProfile(data, para, unit, col_name, core, ls_core, dobj_hidEP, ls
     ax.invert_yaxis()
 
     if core_select != 0:
-        ax.title.set_text('{} depth profile for core {}'.format(para, core_select))
+        ax.title.set_text('{} depth profile for {} {}'.format(grp_label, para, core_select))
         ax.axhline(0, lw=.5, color='k')
         for en, nr in enumerate(data[core_select].keys()):
             if core_select in dobj_hidEP.keys():
@@ -4382,7 +4495,7 @@ def plot_adjustEP(core, sample, col, dfCore, scale, fig=None, ax=None):
 def plot_EPUpdate(core, nr, df, ddcore, scale, col, fig, ax):
     # clear coordinate system but keep the labels
     ax.cla()
-    ax.title.set_text('EP profile for core {} - sample {}'.format(core, nr))
+    ax.title.set_text('EP profile for {} {} - sample {}'.format(grp_label, core, nr))
     ax.set_xlabel('EP / mV'), ax.set_ylabel('Depth / µm')
 
     # plotting part
@@ -4409,7 +4522,7 @@ def GUI_adjustDepthEP(core, nr, dfCore, scale, col, fig=None, ax=None, show=True
         ax.cla()
 
     if core != 0:
-        ax.title.set_text('EP profile for core {} - sample {}'.format(core, nr))
+        ax.title.set_text('EP profile for {} {} - sample {}'.format(grp_label, core, nr))
         ax.set_ylabel('Depth / µm'), ax.set_xlabel('EP / mV')
 
     # plotting part

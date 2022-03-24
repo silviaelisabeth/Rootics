@@ -282,7 +282,7 @@ def plot_pHProfile(ls_core, dic_dcore, plot_res=True):
     return dfig
 
 
-def GUI_baslineShift(data_shift, core, ls_core, plot_col, fig=None, ax=None, show=True):
+def GUI_baslineShift(data_shift, core, ls_core, plot_col, grp_label, fig=None, ax=None, show=True):
     plt.ioff()
 
     # identify closest value in list
@@ -306,7 +306,7 @@ def GUI_baslineShift(data_shift, core, ls_core, plot_col, fig=None, ax=None, sho
     if core_select == 0 or not data_shift:
         pass
     else:
-        ax.title.set_text('Sediment water interface profile (SWI) for core {}'.format(core_select))
+        ax.title.set_text('Sediment water interface profile (SWI) for {} {}'.format(grp_label, core_select))
     ax.set_xlabel('O2 / {}'.format(unit)), ax.set_ylabel('Depth / µm')
     ax.invert_yaxis()
 
@@ -336,7 +336,7 @@ def GUI_baslineShift(data_shift, core, ls_core, plot_col, fig=None, ax=None, sho
     return fig
 
 
-def GUI_baslineShiftCore(data_shift, core_select, plot_col, fig, ax):
+def GUI_baslineShiftCore(data_shift, core_select, plot_col, grp_label, fig, ax):
     ax.cla()
 
     # identify the columns to plot
@@ -358,7 +358,7 @@ def GUI_baslineShiftCore(data_shift, core_select, plot_col, fig, ax):
         # plot figure
         if ax is None:
             fig, ax = plt.subplots(figsize=(3, 4))
-        ax.title.set_text('Sediment water interface profile (SWI) for core {}'.format(core_select))
+        ax.title.set_text('Sediment water interface profile (SWI) for {} {}'.format(grp_label, core_select))
         ax.set_xlabel('O2 / {}'.format(unit)), ax.set_ylabel('Depth / µm')
         ax.invert_yaxis()
 
@@ -637,16 +637,23 @@ def load_measurements(dsheets, ls_core, para):
                 ls_col = list()
                 [ls_col.append(i) for i in list(df.columns) if 'M' in i or 'mV' in i]
                 dcore[n] = df[ls_col]
-
             elif 'H2S' in para or 'h2s' in para:
-                print(dsheets.columns)
-                [ls_name.append(i) for i in dsheets.columns if 'H2S' in i and 'M' in i]
-                df = dsheets.set_index(col_[0])[ls_name].dropna()
-                dcore[n] = df[df[ls_name[0]] == core]
+                df = dfcore[dfcore.index == n].set_index(col_[0]).dropna()
+                # crop dataframe of sample --> remove core information
+                [ls_name.append(i) for i in list(df.columns) if 'H2S' in i and 'M' in i]
+                [ls_name.append(i) for i in list(df.columns) if 'H2S' in i and 'mV' in i]
+
+                # no negative concentration shall be possible --> zero correction
+                for c in ls_name[1:]:
+                    df[c] = df[c] - df[c].min()
+                dcore[n] = df[ls_name]
             elif 'EP' in para or 'Ep' in para or 'ep' in para:
                 [ls_name.append(i) for i in dsheets.loc[n].columns if 'EP' in i and '_mV' in i]
                 df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
                 dcore[n] = df[df[ls_name[0]] == core]
+            elif 'pH' in para:
+                df = dfcore[dfcore.index == n].set_index(col_[0]).dropna()
+                dcore[n] = df
             else:
                 df = dsheets.set_index(col_[0]).dropna()
                 dcore[n] = df[df[ls_name[0]] == core]
@@ -1132,7 +1139,7 @@ def sheetname_check(dsheets, para='O2'):
     elif para == 'pH':
         [ls.append(i) for i in list(dsheets.keys()) if 'pH' in i]
     elif para == 'H2S':
-        [ls.append(i) for i in list(dsheets.keys()) if 'H2S' in i]
+        [ls.append(i) for i in list(dsheets.keys()) if 'H2S' in i or 'h2s' in i]
     elif para == 'EP':
         [ls.append(i) for i in list(dsheets.keys()) if 'EP' in i or 'ep' in i or 'Ep' in i]
 
