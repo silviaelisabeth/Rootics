@@ -636,24 +636,23 @@ def load_measurements(dsheets, ls_core, para):
                 # crop dataframe of sample --> remove core information
                 ls_col = list()
                 [ls_col.append(i) for i in list(df.columns) if 'M' in i or 'mV' in i]
-                dcore[n] = df[ls_col]
+                dcore[n] = df[ls_col].sort_index()
             elif 'H2S' in para or 'h2s' in para:
                 df = dfcore[dfcore.index == n].set_index(col_[0]).dropna()
                 # crop dataframe of sample --> remove core information
                 [ls_name.append(i) for i in list(df.columns) if 'H2S' in i and 'M' in i]
                 [ls_name.append(i) for i in list(df.columns) if 'H2S' in i and 'mV' in i]
-
                 # no negative concentration shall be possible --> zero correction
                 for c in ls_name[1:]:
                     df[c] = df[c] - df[c].min()
-                dcore[n] = df[ls_name]
+                dcore[n] = df[ls_name].sort_index()
             elif 'EP' in para or 'Ep' in para or 'ep' in para:
                 [ls_name.append(i) for i in dsheets.loc[n].columns if 'EP' in i and '_mV' in i]
                 df = dsheets.loc[n].set_index(col_[0])[ls_name].dropna()
-                dcore[n] = df[df[ls_name[0]] == core]
+                dcore[n] = df[df[ls_name[0]] == core].sort_index()
             elif 'pH' in para:
                 df = dfcore[dfcore.index == n].set_index(col_[0]).dropna()
-                dcore[n] = df
+                dcore[n] = df.sort_index()
             else:
                 df = dsheets.set_index(col_[0]).dropna()
                 dcore[n] = df[df[ls_name[0]] == core]
