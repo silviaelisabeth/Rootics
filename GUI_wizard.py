@@ -2131,14 +2131,14 @@ class AdjustpHWindow(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Adjustment of data presentation")
-        self.setGeometry(650, 50, 500, 300) # x-position, y-position, height, width
+        self.setGeometry(650, 75, 500, 400) # x-position, y-position, width, height
 
         # add description about how to use this window (slider, outlier detection, trim range)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
                           "following options to improve the fit: \n- Trim pH range (y-axis): press CONTROL/COMMAND + "
                           "select min/max \n- Remove outliers: press SHIFT + select individual points \n\nAt the end, "
                           "update the plot by pressing the button ADJUST.")
-        self.msg.setWordWrap(True), self.msg.setFont(QFont('Helvetica Neue', int(fs_font*1.15)))
+        self.msg.setWordWrap(True), self.msg.setFont(QFont('Helvetica Neue', int(fs_font*1.25)))
 
         # Slider for different cores and label on the right
         self.slider1pH = QSlider(Qt.Horizontal)
@@ -2161,6 +2161,14 @@ class AdjustpHWindow(QDialog):
         self.pHtrim_edit = QLineEdit(self)
         self.pHtrim_edit.setValidator(QRegExpValidator()), self.pHtrim_edit.setAlignment(Qt.AlignRight)
         self.pHtrim_edit.setMaximumHeight(int(fs_font*1.5))
+
+        # swi correction for individual sample
+        swiSample_label = QLabel(self)
+        swiSample_label.setText('SWI correction sample: '), swiSample_label.setFont(QFont('Helvetica Neue', 12))
+        self.swiSample_edit = QLineEdit(self)
+        self.swiSample_edit.setValidator(QDoubleValidator()), self.swiSample_edit.setAlignment(Qt.AlignRight)
+        self.swiSample_edit.setMaximumHeight(int(fs_font * 1.5)), self.swiSample_edit.setText('--')
+
         # actual range from previous window: self.swi_edit.setText('--')
 
         # close the window again
@@ -2180,7 +2188,6 @@ class AdjustpHWindow(QDialog):
         # top part
         MsgGp = QGroupBox()
         MsgGp.setFont(QFont('Helvetica Neue', 12))
-        # MsgGp.setMinimumWidth(300)
         gridMsg = QGridLayout()
         vbox2_top.addWidget(MsgGp)
         MsgGp.setLayout(gridMsg)
@@ -2191,7 +2198,6 @@ class AdjustpHWindow(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        # plotGp.setMinimumWidth(200), \
         plotGp.setMinimumHeight(300)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
@@ -2203,11 +2209,12 @@ class AdjustpHWindow(QDialog):
         gridFig.addWidget(self.canvaspHs, 2, 1)
         gridFig.addWidget(pHtrim_label, 3, 0)
         gridFig.addWidget(self.pHtrim_edit, 3, 1)
+        gridFig.addWidget(swiSample_label, 4, 0)
+        gridFig.addWidget(self.swiSample_edit, 4, 1)
 
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
         naviGp.setFont(QFont('Helvetica Neue', 12))
-        # naviGp.setMinimumWidth(300), \
         naviGp.setFixedHeight(75)
         gridNavi = QGridLayout()
         vbox2_bottom.addWidget(naviGp)
@@ -2333,7 +2340,7 @@ class AdjustpHWindow(QDialog):
         # check if the pH range (scale) changed
         self.updatepHscale()
 
-        # current core, current sample
+        # current core and sample
         c, s = self.Core, int(self.sldpH1_label.text().split(' ')[-1])
 
         # crop dataframe to selected range
@@ -2341,6 +2348,15 @@ class AdjustpHWindow(QDialog):
         # pop outliers from depth profile
         if self.ls_out:
             dcore_crop = self.popData_pH(dcore_crop=dcore_crop)
+
+        # check individual swi for sample
+        if '--' in self.swiSample_edit.text():
+            pass
+        else:
+            swiS = float(self.swiSample_edit.text())
+            xnew = dcore_crop.index - swiS
+            dcore_crop.index = xnew
+            self.swiSample_edit.setText('--')
 
         # update the general dictionary and store adjusted pH
         self.dic_pH[self.Core][s] = dcore_crop
@@ -2360,6 +2376,7 @@ class AdjustpHWindow(QDialog):
 
     def resetPlot(self):
         print('start all over again and use the raw data')
+        self.swiSample_edit.setText('--')
 
     def close_window(self):
         self.hide()
@@ -2984,6 +3001,7 @@ class h2sPage(QWizardPage):
 
         # identify closest value in list
         core_select = closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
+
         # indicate sulfidic front in plot
         figH2S0 = plot_sulfidicFront(df_Front=results['H2S sulfidic front'], core_select=core_select, fig=self.figh2s,
                                      ax=self.axh2s)
@@ -3234,6 +3252,13 @@ class AdjustpHWindowS(QDialog):
         self.H2Strim_edit.setValidator(QRegExpValidator()), self.H2Strim_edit.setAlignment(Qt.AlignRight)
         self.H2Strim_edit.setMaximumHeight(int(fs_font*1.5))
 
+        # swi correction for individual sample
+        swiSample_label = QLabel(self)
+        swiSample_label.setText('SWI correction sample: '), swiSample_label.setFont(QFont('Helvetica Neue', 12))
+        self.swiSample_edit = QLineEdit(self)
+        self.swiSample_edit.setValidator(QDoubleValidator()), self.swiSample_edit.setAlignment(Qt.AlignRight)
+        self.swiSample_edit.setMaximumHeight(int(fs_font * 1.5)), self.swiSample_edit.setText('--')
+
         # close the window again
         self.close_button = QPushButton('OK', self)
         self.close_button.setFixedWidth(100)
@@ -3273,6 +3298,8 @@ class AdjustpHWindowS(QDialog):
         gridFig.addWidget(self.canvasH2Ss, 2, 1)
         gridFig.addWidget(H2Strim_label, 3, 0)
         gridFig.addWidget(self.H2Strim_edit, 3, 1)
+        gridFig.addWidget(swiSample_label, 4, 0)
+        gridFig.addWidget(self.swiSample_edit, 4, 1)
 
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
@@ -3434,7 +3461,16 @@ class AdjustpHWindowS(QDialog):
         if self.ls_out:
             dcore_crop = self.popData_H2S(dcore_crop=dcore_crop)
 
-        # update the general dictionary
+        # check individual swi for sample
+        if '--' in self.swiSample_edit.text():
+            pass
+        else:
+            swiS = float(self.swiSample_edit.text())
+            xnew = dcore_crop.index - swiS
+            dcore_crop.index = xnew
+            self.swiSample_edit.setText('--')
+
+        # update the general dictionary and store adjusted pH
         self.dic_H2S[self.Core][s] = dcore_crop
 
         # re-draw pH profile plot
@@ -3492,6 +3528,7 @@ class AdjustpHWindowS(QDialog):
 
     def resetPlotH2S(self):
         print('start all over again and use the raw data')
+        self.swiSample_edit.setText('--')
 
     def close_windowH2S(self):
         self.hide()
