@@ -307,6 +307,7 @@ class SettingWindow(QDialog):
         self.swi_box.stateChanged.connect(self.saveoption_selected)
         self.profile_box.stateChanged.connect(self.saveoption_selected)
         self.pen_box.stateChanged.connect(self.saveoption_selected)
+        self.swiRaw_box.stateChanged.connect(self.saveoption_selected)
         self.swiF_box.stateChanged.connect(self.saveoption_selected)
         self.fitF_box.stateChanged.connect(self.saveoption_selected)
         self.penF_box.stateChanged.connect(self.saveoption_selected)
@@ -336,6 +337,8 @@ class SettingWindow(QDialog):
         self.pen_box = QCheckBox('Penetration depth', self)
         self.pen_box.setChecked(True)
 
+        self.swiRaw_box = QCheckBox('Raw data plot', self)
+        self.swiRaw_box.setChecked(False)
         self.swiF_box = QCheckBox('SWI corrected plot', self)
         self.swiF_box.setChecked(False)
         self.fitF_box = QCheckBox('Fit plot', self)
@@ -369,9 +372,10 @@ class SettingWindow(QDialog):
         fig_settings.setLayout(grid_fig)
 
         # include widgets in the layout
-        grid_fig.addWidget(self.swiF_box, 0, 0)
-        grid_fig.addWidget(self.fitF_box, 1, 0)
-        grid_fig.addWidget(self.penF_box, 2, 0)
+        grid_fig.addWidget(self.swiRaw_box, 0, 0)
+        grid_fig.addWidget(self.swiF_box, 1, 0)
+        grid_fig.addWidget(self.fitF_box, 2, 0)
+        grid_fig.addWidget(self.penF_box, 3, 0)
 
         ok_settings = QGroupBox("")
         grid_ok = QGridLayout()
@@ -402,6 +406,8 @@ class SettingWindow(QDialog):
         if self.pen_box.isChecked() is True:
             ls_setSave.append('penetration depth')
         # figures
+        if self.swiRaw_box.isChecked() is True:
+            ls_setSave.append('fig raw')
         if self.swiF_box.isChecked() is True:
             ls_setSave.append('fig swi')
         if self.fitF_box.isChecked() is True:
@@ -478,7 +484,7 @@ class o2Page(QWizardPage):
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimumWidth(350), self.slider.setFixedHeight(20)
         self.sld_label = QLabel()
-        self.sld_label.setFixedWidth(50)
+        self.sld_label.setFixedWidth(55)
         self.sld_label.setText('group: --')
 
         # creating window layout
@@ -894,7 +900,12 @@ class o2Page(QWizardPage):
         else:
             wFit.show()
 
-    def save_data(self):
+    def save_data(self, analyte):
+        # make a project folder for the specific analyte if it doesn't exist
+        save_path = self.field("Storage path") + '/' + analyte + '_project/'
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
         ls_saveData = list()
         [ls_saveData.append(i) for i in self.field('saving parameters').split(',') if 'fig' not in i]
 
@@ -909,52 +920,75 @@ class o2Page(QWizardPage):
             [dout.pop(i, None) for i in ls_removeKey]
 
             # save to excel sheets
-            dbs.save_rawExcel(dout=dout, file=self.field("Data"), savePath=self.field("Storage path"))
+            dbs.save_rawExcel(dout=dout, file=self.field("Data"), savePath=save_path)
+
+    def save_figraw(self, save_path, dfigRaw):
+        # find the actual running number
+        save_folder = dbs._actualFolderName(savePath=save_path, cfolder='O2_rawProfile', rlabel='run')
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
+
+        for f in dfigRaw.keys():
+            for t in ls_figtype:
+                name = save_folder + 'rawDepthprofile_core-{}.'.format(f) + t
+                dfigRaw[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
 
     def save_figdepth(self, save_path, dfigBase):
-        if not os.path.exists(save_path + 'O2_DepthProfile/'):
-            os.makedirs(save_path + 'O2_DepthProfile/')
+        # find the actual running number
+        save_folder = dbs._actualFolderName(savePath=save_path, cfolder='O2_DepthProfile', rlabel='run')
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
+
         for f in dfigBase.keys():
             for t in ls_figtype:
-                name = save_path + 'DepthProfile/' + 'Depthprofile_core-{}_SWI_corrected.'.format(f) + t
+                name = save_folder + 'Depthprofile_core-{}_SWI_corrected.'.format(f) + t
                 dfigBase[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
 
     def save_figFit(self, save_path, dfigFit):
-        if not os.path.exists(save_path + 'Fit/'):
-            os.makedirs(save_path + 'Fit/')
+        # find the actual running number
+        save_folder = dbs._actualFolderName(savePath=save_path, cfolder='Fit', rlabel='run')
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
 
         for f in dfigFit.keys():
             for ff in dfigFit[f].keys():
                 for t in ls_figtype:
-                    name = save_path + 'Fit/' + 'Fit_core-{}_sample-{}.'.format(f, ff) + t
+                    name = save_folder + 'Fit_core-{}_sample-{}.'.format(f, ff) + t
                     dfigFit[f][ff].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
 
     def save_figPen(self, save_path, dfigPen):
-        if not os.path.exists(save_path + 'PenetrationDepth/'):
-            os.makedirs(save_path + 'PenetrationDepth/')
+        # find the actual running number
+        save_folder = dbs._actualFolderName(savePath=save_path, cfolder='PenetrationDepth', rlabel='run')
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
+
         for f in dfigPen.keys():
             for t in ls_figtype:
-                name = save_path + 'PenetrationDepth/' + 'PenetrationDepth_core-{}.'.format(f) + t
+                name = save_folder + 'PenetrationDepth_core-{}.'.format(f) + t
                 dfigPen[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
 
-    def save_figure(self):
+    def save_figure(self, analyte):
         ls_saveFig = list()
         [ls_saveFig.append(i) for i in self.field('saving parameters').split(',') if 'fig' in i]
-
         if len(ls_saveFig) > 0:
             save_path = self.field("Storage path") + '/Graphs/'
-
             # make folder "Graphs" if it doesn't exist
             if not os.path.exists(save_path):
                 os.makedirs(save_path)
 
-            # generate images of all all samples (don't plot them)
-            [dfigBase, dfigFit,
-             dfigPen] = figures4saving(ls_core=self.ls_core, ddcore=self.dic_dcore, deriv=self.dic_deriv,
-                                       ddata_shift=self.ddata_shift[self.ls_colname[-1]], dfit=self.dfit,
-                                       dcore_pen=self.dcore_pen)
+            # make a project folder for the specific analyte if it doesn't exist
+            save_path = save_path + analyte + '_project/'
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
 
+            # generate images of all all samples (don't plot them)
+            [dfigRaw, dfigBase, dfigFit,
+             dfigPen] = figures4saving(ls_core=self.ls_core, draw=results['O2 raw data'], ddcore=self.dic_dcore,
+                                       deriv=self.dic_deriv, ddata_shift=self.ddata_shift, dfit=self.dfit,
+                                       dcore_pen=self.dcore_pen)
             # Depth profiles
+            if 'fig raw' in ls_saveFig:
+                self.save_figraw(save_path=save_path, dfigRaw=dfigRaw)
             if 'fig swi' in ls_saveFig:
                 self.save_figdepth(save_path=save_path, dfigBase=dfigBase)
             # Fit profiles
@@ -974,8 +1008,8 @@ class o2Page(QWizardPage):
                                 salinity=float(self.salinity_edit.text()))
 
         # extract saving options for data / figures - according to user input
-        self.save_data()
-        self.save_figure()
+        self.save_data(analyte='O2')
+        self.save_figure(analyte='O2')
 
         # Information that saving was successful
         msgBox = QMessageBox()
@@ -1402,25 +1436,27 @@ class CalibCore(QDialog):
         self.hide()
 
 
-def figures4saving(ls_core, ddata_shift=None, ddcore=None, dfit=None, deriv=None, dcore_pen=None):
-    dfigBase, dfigFit, dfigPen = dict(), dict(), dict()
+def figures4saving(ls_core, draw=None, ddata_shift=None, ddcore=None, dfit=None, deriv=None, dcore_pen=None):
+    dfigRaw, dfigBase, dfigFit, dfigPen = dict(), dict(), dict(), dict()
     for c in ls_core:
+        # raw data
+        if draw:
+            dfigRaw[c] = dbs.GUI_rawProfile(O2data=draw, core=c, show=False, ls_core=ls_core, grp_label=grp_label)
+
         # SWI corrected
         if ddata_shift:
             dfigBase[c] = dbs.GUI_baslineShift(data_shift=ddata_shift, grp_label=grp_label, core=c, show=False,
                                                ls_core=ls_core, plot_col='mV')
-
         # Fit plots
         dfigFitS = dict()
         if ddcore:
             for s in ddcore[c].keys():
                 dfigFitS[s] = GUI_FitDepth(core=c, nr=s, dfCore=ddcore[c], dfFit=dfit[c], dfDeriv=deriv[c], show=False)
             dfigFit[c] = dfigFitS
-
         # indicated penetration depth
         if dcore_pen:
             dfigPen[c] = GUI_penetration_av(core=c, ls_core=ls_core, dcore_pen=dcore_pen, show=False)[0]
-    return dfigBase, dfigFit, dfigPen
+    return dfigRaw, dfigBase, dfigFit, dfigPen
 
 
 def plot_Fitselect(core, sample, dfCore, dfFit, dfDeriv, fig, ax, ax1):
@@ -1496,7 +1532,7 @@ def GUI_O2depth(core, ls_core, dcore_pen, dobj_hid, fig, ax):
     ax.cla()
     lines = list()
     # identify closest value in list
-    core_select = closest_core(ls_core=ls_core, core=core)
+    core_select = dbs.closest_core(ls_core=ls_core, core=core)
 
     # initialize figure plot
     if ax is None:
@@ -1578,14 +1614,6 @@ def GUI_O2depth(core, ls_core, dcore_pen, dobj_hid, fig, ax):
     return fig
 
 
-def closest_core(ls_core, core):
-    if core == 0 or not ls_core:
-        core_select = 0
-    else:
-        core_select = min(ls_core, key=lambda x: abs(x - core))
-    return core_select
-
-
 def GUI_calcO2penetration(O2_pen, unit, steps, gmod):
     dcore_pen, dcore_fig = dict(), dict()
     for core in dO2_core.keys():
@@ -1648,7 +1676,7 @@ def GUI_penetration_av(core, ls_core, dcore_pen, fig=None, ax=None, show=True):
     plt.ioff()
 
     # identify closest value in list
-    core_select = closest_core(ls_core=ls_core, core=core)
+    core_select = dbs.closest_core(ls_core=ls_core, core=core)
 
     # initialize figure plot
     if ax is None:
@@ -1876,7 +1904,7 @@ class phPage(QWizardPage):
         self.status_pH += 1
 
         # identify closest value in list
-        core_select = closest_core(ls_core=self.ls_core, core=self.sliderpH.value())
+        core_select = dbs.closest_core(ls_core=self.ls_core, core=self.sliderpH.value())
 
         # plot the pH profile for the first core
         if core_select in scalepH.keys():
@@ -1938,63 +1966,6 @@ class phPage(QWizardPage):
         # store adjusted pH
         results['pH swi adjusted'] = self.dpH_core
 
-    # def swi_correctionpH(self):
-    #     # identify closest value in list
-    #     core_select = min(self.ls_core, key=lambda x: abs(x - self.sliderpH.value()))
-    #
-    #     if self.swipH_box.checkState() == 0:
-    #         self.continuepH_button.setEnabled(True)
-    #
-    #         # update information about actual correction of pH profile
-    #         if '--' in self.swi_edit.text():
-    #             results['pH swi depth'] = dict({core_select: 0.})
-    #         elif 'pH swi depth' in results.keys():
-    #             if core_select in results['pH swi depth'].keys():
-    #                 results['pH swi depth'][core_select] += float(self.swi_edit.text())
-    #             else:
-    #                 dic1 = dict({core_select: float(self.swi_edit.text())})
-    #                 results['pH swi depth'].update(dic1)
-    #         else:
-    #             results['pH swi depth'] = dict({core_select: float(self.swi_edit.text())})
-    #
-    #         if '--' in self.swi_edit.text() or len(self.swi_edit.text()) == 0:
-    #             pass
-    #         else:
-    #             # correction of manually selected baseline
-    #             for s in self.dpH_core[core_select].keys():
-    #                 ynew = self.dpH_core[core_select][s].index - float(self.swi_edit.text())
-    #                 self.dpH_core[core_select][s].index = ynew
-    #     else:
-    #         dpen_av = dict()
-    #         for c in results['O2 penetration depth'].keys():
-    #             ls = list()
-    #             [ls.append(i.split('-')[0]) for i in list(results['O2 penetration depth'][c].keys())
-    #              if "penetration" in i]
-    #             l = pd.DataFrame([results['O2 penetration depth'][c][s]
-    #                               for s in results['O2 penetration depth'][c].keys()
-    #                  if 'penetration' in s], columns=['Depth (µm)', 'O2 (%air)'], index=ls)
-    #             dpen_av[c] = l.mean()
-    #
-    #         # update information about actual correction of pH profile
-    #         if 'pH swi depth' in results.keys():
-    #             for c in self.dpH_core.keys():
-    #                 if c in results['pH swi depth'].keys():
-    #                     results['pH swi depth'][c] += dpen_av[c]['Depth (µm)']
-    #                 else:
-    #                     results['pH swi depth'][c] = dpen_av[c]['Depth (µm)']
-    #         else:
-    #             results['pH swi depth'] = dpen_av
-    #
-    #         # SWI correction as for O2 project
-    #         for c in self.dpH_core.keys():
-    #             for s in self.dpH_core[c].keys():
-    #                 xnew = [i - dpen_av[c]['Depth (µm)'] for i in self.dpH_core[c][s].index]
-    #                 self.dpH_core[c][s].index = xnew
-    #
-    #         # SWI correction applied only once
-    #         self.continuepH_button.setEnabled(False)
-    #     results['pH swi corrected'] = self.dpH_core
-
     def sliderpH_update(self):
         if self.ls_core:
             # allow only discrete values according to existing cores
@@ -2026,6 +1997,26 @@ class phPage(QWizardPage):
 
     def save_pH(self):
         print('TODO: implement pH saving')
+        print(1986, results.keys())
+        # create folder for data output
+        # make a project folder for the specific analyte if it doesn't exist
+        save_path = self.field("Storage path") + '/pH_project/'
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
+        # create folder for figure output
+        ls_saveFig = list()
+        [ls_saveFig.append(i) for i in self.field('saving parameters').split(',') if 'fig' in i]
+        if len(ls_saveFig) > 0:
+            save_path = self.field("Storage path") + '/Graphs/'
+            # make folder "Graphs" if it doesn't exist
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
+
+            # make a project folder for the specific analyte if it doesn't exist
+            save_path = save_path + 'pH_project/'
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
 
     def reset_pHpage(self):
         self.setSubTitle("Initially,  the pH profile will be plotted without any depth correction. "
@@ -2385,7 +2376,7 @@ class AdjustpHWindow(QDialog):
 def plot_pHProfile(data_pH, core, ls_core, scale, ls='-.', fig=None, ax=None, show=True, trimexact=False):
     plt.ioff()
     # identify closest value in list
-    core_select = closest_core(ls_core=ls_core, core=core)
+    core_select = dbs.closest_core(ls_core=ls_core, core=core)
 
     # initialize figure
     if ax is None:
@@ -2839,7 +2830,7 @@ class h2sPage(QWizardPage):
         # update status for process control
         self.status_h2s = 1
         # identify closest value in list
-        core_select = closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
+        core_select = dbs.closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
 
         # convert H2S into total sulfide in case pH was measured
         dsulfide = self.calc_total_sulfide()
@@ -2886,7 +2877,7 @@ class h2sPage(QWizardPage):
         self.setSubTitle("You can manually adjust the surface and update the profile by clicking the update button.\n\n")
 
         # identify closest value in list
-        core_select = closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
+        core_select = dbs.closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
         # identify data, that shall be plotted
         self.data = results['H2S profile total sulfide'] if 'H2S profile total sulfide' in results.keys() else self.dH2S_core
 
@@ -2991,7 +2982,7 @@ class h2sPage(QWizardPage):
             # average when object not hidden
             if coreS in dobj_hidH2S.keys():
                 smp_all = list(dfCore.index)
-                [smp_all.remove(i) for i in dobj_hidH2S[coreS]]
+                [smp_all.remove(i) for i in dobj_hidH2S[coreS] if i in smp_all]
             else:
                 smp_all = list(dfCore.index)
             dfCore.loc['mean', dfCol] = np.nanmean(dfCore.loc[smp_all])
@@ -3000,7 +2991,7 @@ class h2sPage(QWizardPage):
         results['H2S sulfidic front'] = df_sFront
 
         # identify closest value in list
-        core_select = closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
+        core_select = dbs.closest_core(ls_core=self.ls_core, core=self.sliderh2s.value())
 
         # indicate sulfidic front in plot
         figH2S0 = plot_sulfidicFront(df_Front=results['H2S sulfidic front'], core_select=core_select, fig=self.figh2s,
@@ -3008,6 +2999,7 @@ class h2sPage(QWizardPage):
 
         # when slider value change (on click), return new value and update figure plot
         self.sliderh2s.valueChanged.connect(self.sliderh2s_updateIII)
+        self.continueh2s_button.disconnect(), self.continueh2s_button.setEnabled(False)
 
     def sliderh2s_update(self):
         if self.ls_core:
@@ -3539,7 +3531,7 @@ def plot_H2SProfile(data_H2S, core, ls_core, scale, col, dobj_hidH2S, ls='-.', f
     plt.ioff()
     lines = list()
     # identify closest value in list and the plotted analyte
-    core_select = closest_core(ls_core=ls_core, core=core)
+    core_select = dbs.closest_core(ls_core=ls_core, core=core)
 
     s0 = list(data_H2S[core_select].keys())[0]
     para = 'total sulfide zero corr_µmol/L' if 'total sulfide zero corr_µmol/L' in data_H2S[core_select][s0].columns else col
@@ -3993,7 +3985,7 @@ class epPage(QWizardPage):
             self.status_EP += 0.01
 
         # identify closest value in list
-        core_select = closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
+        core_select = dbs.closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
 
         # drift correction in case it was selected
         self.drift_correctionEP()
@@ -4117,7 +4109,7 @@ class epPage(QWizardPage):
             self.status_EP += .01
 
         # identify closest value in list
-        core_select = closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
+        core_select = dbs.closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
 
         # get correct profile data (drift corrected, if available or raw data)
         self.data = self.dEP_corr if 'EP drift corrected' in results.keys() else self.dEP_core
@@ -4539,7 +4531,7 @@ def plot_initalProfile(data, para, unit, col_name, core, ls_core, dobj_hidEP, ls
     plt.ioff()
     lines = list()
     # identify closest value in list
-    core_select = closest_core(ls_core=ls_core, core=core)
+    core_select = dbs.closest_core(ls_core=ls_core, core=core)
 
     # initialize figure
     if ax is None:

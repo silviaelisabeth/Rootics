@@ -282,14 +282,49 @@ def plot_pHProfile(ls_core, dic_dcore, plot_res=True):
     return dfig
 
 
+def GUI_rawProfile(core, ls_core, O2data, grp_label, fig=None, ax=None, show=True):
+    plt.ioff()
+
+    # identify closest value in list
+    core_select = closest_core(ls_core=ls_core, core=core)
+
+    # identify column to plot
+    for c in O2data[core_select][list(O2data[core_select].keys())[0]].columns:
+        if 'mV' in c:
+            col2plot = c
+
+    # initialize figure
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(3, 4))
+    else:
+        ax.cla()
+    ax.set_xlabel('O2 concentration / mV'), ax.set_ylabel('Depth / µm')
+    ax.invert_yaxis()
+
+    if core_select != 0:
+        ax.title.set_text('O2 depth profile for {} {}'.format(grp_label, core_select))
+        ax.axhline(0, lw=.5, color='k')
+        for en, nr in enumerate(O2data[core_select].keys()):
+            ax.plot(O2data[core_select][nr][col2plot], O2data[core_select][nr].index, lw=1, ls='-.', marker='.',
+                    color=ls_col[en], alpha=0.75, label='sample ' + str(nr))
+        ax.legend(frameon=True, fontsize=10)
+
+    # update layout
+    fig.tight_layout(pad=1.5)
+
+    if show is False:
+        plt.close(fig)
+    else:
+        fig.canvas.draw()
+
+    return fig
+
+
 def GUI_baslineShift(data_shift, core, ls_core, plot_col, grp_label, fig=None, ax=None, show=True):
     plt.ioff()
 
     # identify closest value in list
-    if core == 0 or not ls_core:
-        core_select = 0
-    else:
-        core_select = min(ls_core, key=lambda x: abs(x - core))
+    core_select = closest_core(ls_core=ls_core, core=core)
 
     # identify column to plot
     for c in data_shift[core_select][list(data_shift[core_select].keys())[0]].columns:
@@ -728,9 +763,9 @@ def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, s
             df_fit = pd.concat([results['O2 fit'][c][s][1] for s in results['O2 fit'][c].keys()], axis=1)
             df_fit.columns = results['O2 fit'][c].keys()
             dcore_fit[c] = df_fit
-
-            # derivative
-            dcore_der[c] = pd.concat(results['O2 derivative'][c], axis=1)
+            # 1st derivative
+            dcore_der[c] = pd.concat([results['O2 derivative'][c][s][0] for s in results['O2 derivative'][c].keys()],
+                                     axis=1)
         dout['fit_mV'] = pd.concat(dcore_fit, axis=1)
         dout['derivative_mV'] = pd.concat(dcore_der, axis=1)
 
@@ -738,20 +773,21 @@ def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, s
     if 'O2 SWI corrected' in results.keys():
         dcore_swi = dict()
         # only potential data 'O2_mV'
-        ddata = results['O2 SWI corrected']['O2_mV']
+        ddata = results['O2 SWI corrected']
         for c in ddata.keys():
-            # t either µmol/L or mV
-            df = pd.concat([ddata[c][s] for s in ddata[c].keys()], axis=1)
+            # either µmol/L or mV -> take the first columns
+            col = ddata[c][list(ddata[c].keys())[0]].columns[-1]
+            df = pd.concat([ddata[c][s][col] for s in ddata[c].keys()], axis=1)
             df.columns = ddata[c].keys()
             dcore_swi[c] = df
-        dout['SWIcorrected mV'] = pd.concat(dcore_swi, axis=1)
+        dout['SWIcorrected {}'.format(col)] = pd.concat(dcore_swi, axis=1)
 
     # handle o2 profiles - results['O2 profile']
     if 'O2 profile' in results.keys():
         dout['O2 profile'] = pd.concat(results['O2 profile'], axis=1)
 
     # handle penetration depth - results['penetration depth']
-    if 'penetration depth' in results.keys():
+    if 'O2 penetration depth' in results.keys():
         ddata = results['O2 penetration depth']
         dpen = dict()
         for c in ddata.keys():
@@ -784,34 +820,40 @@ def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, s
     return dout
 
 
-def save_rawExcel(dout, file, savePath):
-    savename = savePath + "/output_" + file.split('/')[-1]
+def _actualFolderName(savePath, cfolder, rlabel='run'):
+    # check whether file exist already in folder
+    ls_folder = next(walk(savePath), (None, None, []))[1]  # returns all the sub-folder
+    count = 0
+    for f in ls_folder:
+        if cfolder in f:
+            count += 1
+    savefolder = savePath + cfolder + '_' + rlabel + str(count) + '/'
+    return savefolder
 
+
+def _actualFileName(savePath, savename, file, clabel='output', rlabel='run'):
     # check whether file exist already in folder
     ls_folder = next(walk(savePath), (None, None, []))[2]  # [] if no file
 
-    ls_files = list()
-    if savename.split('/')[-1] in ls_folder:
-        # return all files with similar pattern
+    addstr = ''
+    if ls_folder:
         for f in ls_folder:
-            if savename.split('/')[-1].split('_')[0] in f:
-                ls_files.append(f)
+            if '-' + rlabel in f.split('_')[0]:
+                addstr = f.split(rlabel)[0] + rlabel + str(int(f.split('-' + rlabel)[1].split('_')[0]) + 1) + '_'
+    else:
+        addstr = clabel + "-" + rlabel + str(0) + "_"
+    savename = savePath + '/' + addstr + file.split('/')[-1]
+    return savename
 
-    if ls_files:
-        for f in ls_folder:
-            if '-' in f.split('_')[0]:
-                addstr = f.split('run')[0] + 'run' + str(int(f.split('-run')[1].split('_')[0]) + 1) + '_'
-            else:
-                # first run - now add "run1"
-                addstr = f.split('_')[0] + '-run1_'
-        savename = savePath + '/' + addstr + file.split('/')[-1]
+
+def save_rawExcel(dout, file, savePath):
+    savename_ = savePath + "/output_" + file.split('/')[-1]
+    savename = _actualFileName(savePath=savePath, savename=savename_, file=file, clabel='output', rlabel='run')
 
     # actually saving DataFrame to excel
     writer = pd.ExcelWriter(savename)
-
     for key in dout.keys():
         dout[key].to_excel(writer, sheet_name=key)
-
     writer.save()
     writer.close()
 
@@ -828,6 +870,15 @@ def save_hdf5(dtab_sal, fname):
         h.create_dataset('page-{} columns'.format(k), data=list(v[1].columns))
         h.create_dataset('page-{} data'.format(k), data=np.array(v[1], dtype=float))
     h.close()
+
+
+# --------------------------------------------------------------------------------------------------------------------
+def closest_core(ls_core, core):
+    if core == 0 or not ls_core:
+        core_select = 0
+    else:
+        core_select = min(ls_core, key=lambda x: abs(x - core))
+    return core_select
 
 
 # --------------------------------------------------------------------------------------------------------------------
