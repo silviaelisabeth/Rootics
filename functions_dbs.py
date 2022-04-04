@@ -784,7 +784,10 @@ def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, s
 
     # handle o2 profiles - results['O2 profile']
     if 'O2 profile' in results.keys():
-        dout['O2 profile'] = pd.concat(results['O2 profile'], axis=1)
+        dic = dict()
+        for c in results['O2 profile'].keys():
+            dic[c] = pd.concat(results['O2 profile'][c], axis=1)
+        dout['O2 profile'] = pd.concat(dic, axis=1)
 
     # handle penetration depth - results['penetration depth']
     if 'O2 penetration depth' in results.keys():
@@ -820,6 +823,58 @@ def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, s
     return dout
 
 
+def prepDataH2Soutput(dout, results):
+    # handle raw profiles to one dataframe results['raw data']
+    if 'H2S profile raw data' in results.keys():
+        dcore_raw = dict()
+        for c in results['H2S profile raw data'].keys():
+            dcore_raw[c] = pd.concat(results['H2S profile raw data'][c], axis=1)
+        dout['H2S profile raw data'] = pd.concat(dcore_raw, axis=1)
+
+    # adjusted data
+    if 'H2S profile total sulfide' in results.keys():
+        dcore_tsulf = dict()
+        ddata = results['H2S profile total sulfide']
+        for c in ddata.keys():
+            # -> take the last column
+            col = ddata[c][list(ddata[c].keys())[0]].columns[-1]
+            df = pd.concat([ddata[c][s][col] for s in ddata[c].keys()], axis=1)
+            df.columns = ddata[c].keys()
+            dcore_tsulf[c] = df
+        dout['Depth profile total sulfide'] = pd.concat(dcore_tsulf, axis=1)
+
+    if 'H2S adjusted' in results.keys():
+        dcore_swi = dict()
+        for c in results['H2S adjusted'].keys():
+            dcore_swi[c] = pd.concat(results['H2S adjusted'][c], axis=1)
+        dout['H2S adjusted'] = pd.concat(dcore_swi, axis=1)
+
+    # handle penetration depth - results['penetration depth']
+    if 'H2S sulfidic front' in results.keys():
+        ddata = results['H2S sulfidic front']
+        dpen = dict()
+        for c in ddata.keys():
+            df = pd.DataFrame(ddata[c])
+            # add mark for excluded objects
+            df.loc[:, 'outlier'] = [None] * len(df.index)
+            if c in results['H2S hidden objects'].keys():
+                for s in results['H2S hidden objects'][c]:
+                    df.loc[s, 'outlier'] = 'X'
+            dpen[c] = df
+        dout['penetration depth'] = pd.concat(dpen, axis=0)
+
+    # meta data
+    dm = pd.DataFrame([results['temperature degC'], results['salinity PSU']], index=['temp degC', 'salinity PSU'])
+    df_meta1 = results['pH - H2S correlation']
+    colNew = df_meta1.columns
+    df_meta1.loc[0, :] = colNew
+    df_meta1.columns = np.arange(len(df_meta1.columns))
+    dmeta = pd.concat([dm, results['pH - H2S correlation']], axis=0, ignore_index=True)
+    dmeta.index = ['temp degC', 'salinity PSU', 'pH - H2S correlation'] + list(np.arange(len(df_meta1.index)-1))
+    dout['meta data'] = dmeta
+    return dout
+
+
 def _actualFolderName(savePath, cfolder, rlabel='run'):
     # check whether file exist already in folder
     ls_folder = next(walk(savePath), (None, None, []))[1]  # returns all the sub-folder
@@ -831,24 +886,28 @@ def _actualFolderName(savePath, cfolder, rlabel='run'):
     return savefolder
 
 
-def _actualFileName(savePath, savename, file, clabel='output', rlabel='run'):
+def _actualFileName(savePath, file=None, clabel='output', rlabel='run'):
     # check whether file exist already in folder
     ls_folder = next(walk(savePath), (None, None, []))[2]  # [] if no file
 
     addstr = ''
     if ls_folder:
+        ls_addstr = list()
         for f in ls_folder:
             if '-' + rlabel in f.split('_')[0]:
-                addstr = f.split(rlabel)[0] + rlabel + str(int(f.split('-' + rlabel)[1].split('_')[0]) + 1) + '_'
+                ls_addstr.append(int(f.split('-' + rlabel)[1].split('_')[0]) + 1)
+        addstr = f.split(rlabel)[0] + rlabel + str(max(ls_addstr)) + '_'
     else:
         addstr = clabel + "-" + rlabel + str(0) + "_"
-    savename = savePath + '/' + addstr + file.split('/')[-1]
+    if file:
+        savename = savePath + '/' + addstr + file.split('/')[-1]
+    else:
+        savename = savePath + '/' + addstr
     return savename
 
 
 def save_rawExcel(dout, file, savePath):
-    savename_ = savePath + "/output_" + file.split('/')[-1]
-    savename = _actualFileName(savePath=savePath, savename=savename_, file=file, clabel='output', rlabel='run')
+    savename = _actualFileName(savePath=savePath, file=file, clabel='output', rlabel='run')
 
     # actually saving DataFrame to excel
     writer = pd.ExcelWriter(savename)
@@ -1015,7 +1074,7 @@ def baseline_finder_DF(dic_dcore, steps, model):
     return res, df_fit, df_fitder
 
 
-def baseline_shift(dic_dcore, dic_deriv, dfit):
+def baseline_shift(dic_dcore, dfit):
     data_shift = dict(map(lambda c:
                           (c, dict(map(lambda n:
                                        (n, pd.DataFrame(np.array(dic_dcore[c][n]),
