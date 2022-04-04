@@ -1383,3 +1383,40 @@ def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µm
     return do2_res
 
 
+def driftCorr_package_step1(nP, dataEP, dorder):
+    # drift correction for individual package
+    dfP_ = [dataEP[p[0]][p[1]].sort_index(ascending=True) for p in dorder[nP]]
+    dfP = pd.concat(dfP_, axis=0)
+    return dfP_, dfP
+
+
+def curveFitPack(dfP_, numP, nP, dorder, resultsEP, fit_select='polynom2nd'):
+    # curve fit
+    ydata = [dfP_[n].loc[dfP_[n].index[:numP]].mean()['EP_mV'] for n in range(len(dfP_))]
+    xdata = np.arange(len(ydata))
+    xnew = np.linspace(0, xdata[-1], num=int(xdata[-1] / 0.2 + 1))
+
+    if len(ydata) > 2 and fit_select == 'polynom2nd':
+        print('polynom 2nd order')
+        arg = np.polyfit(x=xdata, y=ydata, deg=2)
+        c = arg[2]
+        df_reg = pd.DataFrame(arg[0] * (xnew ** 2) + arg[1] * xnew + arg[2], index=xnew, columns=['EP_reg'])
+    elif len(ydata) <= 2 or fit_select == 'linear':
+        print('linear regression')
+        arg = stats.linregress(x=xdata, y=ydata)
+        c = arg[1]
+        df_reg = pd.DataFrame(arg[0] * xnew + arg[1], index=xnew, columns=['EP_reg'])
+    else:
+        arg, c = [np.nan], 0
+        df_reg = pd.DataFrame([np.nan] * xnew, index=xnew, columns=['EP_reg'])
+
+    # determine goodness of fit
+    chi_squared = np.sum((np.polyval(arg, xdata) - ydata) ** 2)
+
+    # actual correction of all profiles part of the package | target value - actual value
+    corr_f = [c - ydata[n] for n in range(len(xdata))]
+    for en, r in enumerate(dorder[nP]):
+        c, s = r
+        resultsEP[c][s] = pd.concat([dfP_[en]['Core'], dfP_[en]['EP_mV'] + corr_f[en]], axis=1)
+
+    return ydata, df_reg, chi_squared, corr_f, resultsEP

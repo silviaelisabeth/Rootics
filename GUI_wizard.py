@@ -3987,7 +3987,7 @@ class epPage(QWizardPage):
                          "included, make sure to check the checkbox.  At any case,  the profile can be adjusted by "
                          "trimming the depth range and removing outliers.")
 
-        self.status_EP = 0
+        self.ls_core, self.status_EP = None, 0
         self.initUI()
 
         # connect checkbox and load file button with a function
@@ -3996,6 +3996,7 @@ class epPage(QWizardPage):
         self.saveEP_button.clicked.connect(self.save_EP)
         self.resetEP_button.clicked.connect(self.reset_EPpage)
         self.updateEP_button.clicked.connect(self.swi_correctionEP)
+        self.driftEP_box.stateChanged.connect(self.checkConnection_EP)
 
     def initUI(self):
         # manual baseline correction
@@ -4082,12 +4083,22 @@ class epPage(QWizardPage):
         grid_ep.addWidget(self.canvasEP, 2, 0)
         self.setLayout(mlayout2)
 
+    def checkConnection_EP(self):
+        if self.status_EP > 0:
+            if self.driftEP_box.isChecked():
+                self.continueEP_button.clicked.connect(self.continue_EPII)
+
+        # collect initial information
+        if self.driftEP_box.isChecked():
+            print('plot time-drive of all profiles -> ask for which profiles belong together')
+
     def load_EPdata(self):
         if self.field("SoftwareFile") == 'True':
             dsheets = dbs._loadFile4GUI(file=self.field("Data"))
         else:
             # old version with pre-processed files:
             dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+        self.dsheets = dsheets
 
         # pre-check whether EP_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='EP')
@@ -4122,11 +4133,12 @@ class epPage(QWizardPage):
 
     def continue_EP(self):
         # update instruction
-        self.setSubTitle("If the respective checkbox is toggled,  the sensor drift correction will be applied.  In "
-                         "addition,  the surface water interface can now be corrected. \n")
+        self.setSubTitle("The measurement data are plotted below.  If you want to adjust the profiles, press the "
+                         "Adjustements button.  If the drift correction shall be applied in the next step, press the "
+                         "respective checkbox.")
 
         # set status for process control
-        self.status_EP = 0
+        self.status_EP += 1
         self.updateEP_button.setEnabled(True)
 
         # load data
@@ -4139,9 +4151,10 @@ class epPage(QWizardPage):
         # use self.scale0 for the initial plot but make it possible to update self.scale
         self.scale = self.scale0 if len(scaleEP) == 0 else scaleEP
         # plot the pH profile for the first core
-        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core),
-                                    ls_core=self.ls_core, col_name='EP_mV', dobj_hidEP=dobj_hidEP, fig=self.figEP,
-                                    ax=self.axEP)
+        ls = '-.' if self.status_EP < 2 else '-'
+        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core), ls=ls,
+                                    ls_core=self.ls_core, col_name='EP_mV', dobj_hidEP=dobj_hidEP, ax=self.axEP,
+                                    fig=self.figEP)
         # slider initialized to first core
         self.sliderEP.setMinimum(int(min(self.ls_core))), self.sliderEP.setMaximum(int(max(self.ls_core)))
         self.sliderEP.setValue(int(min(self.ls_core)))
@@ -4170,7 +4183,7 @@ class epPage(QWizardPage):
 
             # update plot according to selected data set and core
             data = self.dEP_corr if 'EP drift corrected' in results.keys() else self.dEP_core
-            ls = '-.' if self.status_EP < 1 else '-'
+            ls = '-.' if self.status_EP < 2 else '-'
             figEP0 = plot_initalProfile(data=data, para='EP', unit='mV', col_name='EP_mV', core=core_select,
                                         ls_core=self.ls_core, ls=ls, dobj_hidEP=dobj_hidEP, fig=self.figEP, ax=self.axEP)
             self.figEP.canvas.draw()
@@ -4207,6 +4220,7 @@ class epPage(QWizardPage):
 
     def continue_EPII(self):
         # update instruction
+        print('-------- DRIFT CORRECTION -----------------------')
         self.setSubTitle("Now,  the surface water interface can be corrected.  In case the O2 project was assessed "
                          "before,  you can either use the depth determined there,  or use your own depth. \n")
 
@@ -4217,60 +4231,56 @@ class epPage(QWizardPage):
         core_select = dbs.closest_core(ls_core=self.ls_core, core=self.sliderEP.value())
 
         # drift correction in case it was selected
+        print(4221, self.driftEP_box.isChecked())
         self.drift_correctionEP()
 
-        # store drift corrected EP
-        results['EP drift corrected'] = self.dEP_corr
-
-        # plot the pH profile for the first core
-        dfEP_scale = pd.concat([pd.DataFrame([(self.dEP_corr[c][n]['EP_mV'].min(), self.dEP_corr[c][n]['EP_mV'].max())
-                                              for n in self.dEP_corr[c].keys()]) for c in self.dEP_corr.keys()])
-        scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
-        self.scale = scale_plot
-        # scale_plot = self.scale0 if len(scaleEP) == 0 else scaleEP
-        figEP0 = plot_initalProfile(data=self.dEP_corr, para='EP', unit='mV', col_name='EP_mV', core=core_select,
-                                    ls_core=self.ls_core, ls='-', dobj_hidEP=dobj_hidEP,
-                                    fig=self.figEP, ax=self.axEP)
-        self.figEP.canvas.draw()
-
-        # !!!TODO: allow de-checking of sample (which is not an EP signal) in figure plot
-
-
-
-        # slider initialized to first core
-        self.sliderEP.setValue(int(core_select)), self.sldEP_label.setText('{}: {}'.format(self.ls_colname[0],
-                                                                                           int(core_select)))
-
-        # when slider value change (on click), return new value and update figure plot
-        self.sliderEP.valueChanged.connect(self.sliderEP_update)
-
-        self.continueEP_button.disconnect()
-        self.continueEP_button.clicked.connect(self.continue_EPIII)
-
-        # update layout
-        self.swi_edit.setEnabled(True)
+        # # store drift corrected EP
+        # results['EP drift corrected'] = self.dEP_corr
+        #
+        # # plot the pH profile for the first core
+        # dfEP_scale = pd.concat([pd.DataFrame([(self.dEP_corr[c][n]['EP_mV'].min(), self.dEP_corr[c][n]['EP_mV'].max())
+        #                                       for n in self.dEP_corr[c].keys()]) for c in self.dEP_corr.keys()])
+        # scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
+        # self.scale = scale_plot
+        # # scale_plot = self.scale0 if len(scaleEP) == 0 else scaleEP
+        # figEP0 = plot_initalProfile(data=self.dEP_corr, para='EP', unit='mV', col_name='EP_mV', core=core_select,
+        #                             ls_core=self.ls_core, ls='-', dobj_hidEP=dobj_hidEP,
+        #                             fig=self.figEP, ax=self.axEP)
+        # self.figEP.canvas.draw()
+        #
+        # # !!!TODO: allow de-checking of sample (which is not an EP signal) in figure plot
+        #
+        #
+        #
+        # # slider initialized to first core
+        # self.sliderEP.setValue(int(core_select)), self.sldEP_label.setText('{}: {}'.format(self.ls_colname[0],
+        #                                                                                    int(core_select)))
+        #
+        # # when slider value change (on click), return new value and update figure plot
+        # self.sliderEP.valueChanged.connect(self.sliderEP_update)
+        #
+        # self.continueEP_button.disconnect()
+        # self.continueEP_button.clicked.connect(self.continue_EPIII)
+        #
+        # # update layout
+        # self.swi_edit.setEnabled(True)
 
     def drift_correctionEP(self):
-        # get first data point (as we are sure this was measured in the water column)
-        ddict = dict(map(lambda c: (c, pd.DataFrame([(self.dEP_core[c][s]['EP_mV'].values[0],
-                                                      self.dEP_core[c][s]['EP_mV'].index[0])
-                                                     for s in self.dEP_core[c].keys()], index=self.dEP_core[c].keys())),
-                         self.ls_core))
-        df = pd.concat(ddict, axis=0)
+        print('drift correction start...')
+        # !!!TODO: get meta data from measurement sheet (separate function)
+        if 'Metadata' in self.dsheets.keys():
+            sheet = 'Metadata'
+        elif 'metadata' in self.dsheets.keys():
+            sheet = 'metadata'
+        elif 'meta' in self.dsheets.keys():
+            sheet = 'meta'
+        else:
+            sheet = None
+            print('no metadata sheet found. Continue without drift correction')
 
-        # polynomial fit of 2nd order: ax**2 + bx + c = y
-        paraFit = np.polyfit(np.arange(0, len(df.index)), df[0].to_numpy(), deg=2)
-
-        # apply drift correction
-        self.dEP_corr = dict()
-        i = 0
-        for c in self.dEP_core.keys():
-            d = dict()
-            for s in self.dEP_core[c].keys():
-                d_corr = self.dEP_core[c][s]['EP_mV'] + (paraFit[0]*(i**2) + paraFit[1]*i)
-                d[s] = pd.DataFrame(d_corr, columns=['EP_mV'])
-                i += 1
-            self.dEP_corr[c] = d
+        if sheet:
+            # additional window for packaged drift correction
+            self.driftCorr_EP(sheet)
 
     def continue_EPIII(self):
         # update instruction
@@ -4295,8 +4305,7 @@ class epPage(QWizardPage):
         scale_plot = dfEP_scale[0].min(), dfEP_scale[1].max()
         self.scale = scale_plot
         figEP0 = plot_initalProfile(data=self.data, para='EP', unit='mV', col_name='EP_mV', core=core_select,
-                                    ls_core=self.ls_core, ls='-', dobj_hidEP=dobj_hidEP,
-                                    fig=self.figEP, ax=self.axEP)
+                                    ls_core=self.ls_core, ls='-', dobj_hidEP=dobj_hidEP, fig=self.figEP, ax=self.axEP)
         self.figEP.canvas.draw()
 
         # slider initialized to first core
@@ -4307,7 +4316,7 @@ class epPage(QWizardPage):
         self.sliderEP.valueChanged.connect(self.sliderEP_update)
 
         if self.status_EP >= 3:
-            # SWI correction applied only once
+            # SWI correction applied: only once
             self.continueEP_button.setEnabled(False)
 
         # add which profiles are classified as non-EP profiles
@@ -4316,12 +4325,21 @@ class epPage(QWizardPage):
     def adjust_EP(self):
         # open dialog window to adjust data presentation
         global wAdjustEP
-        wAdjustEP = AdjustpHWindowEP(self.sliderEP.value(), self.ls_core, self.dEP_core, self.scale0, 'EP_mV',
-                                     self.figEP, self.axEP, self.swi_edit, self.status_EP)
+        wAdjustEP = AdjustWindowEP(self.sliderEP.value(), self.ls_core, self.dEP_core, self.scale0, 'EP_mV', self.figEP,
+                                   self.axEP, self.swi_edit, self.status_EP)
         if wAdjustEP.isVisible():
             pass
         else:
             wAdjustEP.show()
+
+    def driftCorr_EP(self, sheet):
+        # open dialog window to adjust data presentation
+        global wDCep
+        wDCep = DriftWindow(self.ls_core, results['EP adjusted'], self.dsheets[sheet])
+        if wDCep.isVisible():
+            pass
+        else:
+            wDCep.show()
 
     def save_EP(self):
         # define teh type of EP data that shall be plotted (depending on the status)
@@ -4384,7 +4402,8 @@ class epPage(QWizardPage):
 
         # reset slider
         self.count = 0
-        self.sliderEP.setValue(int(min(self.ls_core))), self.sldEP_label.setText('group: --')
+        if self.ls_core:
+            self.sliderEP.setValue(int(min(self.ls_core))), self.sldEP_label.setText('group: --')
         self.sliderEP.disconnect()
         self.sliderEP.valueChanged.connect(self.sliderEP_update)
 
@@ -4406,7 +4425,7 @@ class epPage(QWizardPage):
         return wizard_page_index["charPage"]
 
 
-class AdjustpHWindowEP(QDialog):
+class AdjustWindowEP(QDialog):
     def __init__(self, sliderValue, ls_core, ddata, scale, col, figEP, axEP, swiEP_edit, status):
         super().__init__()
         self.initUI()
@@ -4710,6 +4729,177 @@ class AdjustpHWindowEP(QDialog):
 
     def close_windowEP(self):
         self.hide()
+
+
+class DriftWindow(QDialog):
+    def __init__(self, ls_core, ddata, dsheets):
+        super().__init__()
+        self.initUI()
+
+        # get the transmitted data
+        self.ddata, self.ls_core, self.dsheets = ddata, ls_core, dsheets
+        # start with first profile package
+        self.nP = 1
+        # get meta data
+        df = self.dsheets[self.dsheets['EP'] > 0][['deployment', 'code', 'EP']]
+        self.dorder = dict(map(lambda n: (n, list([(int(t[1].split(' ')[-1]), t[0]) for t in df[df['EP'] == n].values])),
+                                list(dict.fromkeys(df['EP'].to_numpy()))))
+
+        # set slider to initial value
+        self.sliderTD.setValue(self.nP), self.sldTD_label.setText('group: {}'.format(self.nP))
+        self.sliderTD.setMinimum(min(self.dorder.keys())), self.sliderTD.setMaximum(max(self.dorder.keys()))
+
+        # plot time-drive of the first group
+        dfP_, dfP = dbs.driftCorr_package_step1(nP=self.nP, dataEP=self.ddata, dorder=self.dorder)
+        fig, self.axTD = plot_profileTime(nP=self.nP, df_pack=dfP, resultsEP=self.ddata, dorder=self.dorder,
+                                          fig=self.figTD, ax=self.axTD)
+
+        # when slider value change (on click), return new value and update figure plot
+        self.sliderTD.valueChanged.connect(self.sliderTD_update)
+        self.figTD.canvas.draw()
+
+        # connect checkbox and load file button with a function
+        self.closeDC_button.clicked.connect(self.close_windowSD)
+        self.fit_button.clicked.connect(self.applyDriftCorr)
+
+    def initUI(self):
+        self.setWindowTitle("Sensor drift correction")
+        self.setGeometry(450, 100, 600, 600)
+
+        # Slider for different cores and label on the right
+        self.sliderTD = QSlider(Qt.Horizontal)
+        self.sliderTD.setMinimumWidth(350), self.sliderTD.setFixedHeight(20)
+        self.sldTD_label = QLabel()
+        self.sldTD_label.setFixedWidth(70), self.sldTD_label.setText('group: --')
+
+        # plot time-drive profile package
+        self.figTD, self.axTD = plt.subplots()
+        self.figTD.set_facecolor("none")
+        self.canvasTD = FigureCanvasQTAgg(self.figTD)
+        self.axTD.set_xlabel('measurement points'), self.axTD.set_ylabel('EP / mV')
+        self.figTD.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15), sns.despine()
+
+        # plot curve fit
+        self.figCF, self.axCF = plt.subplots()
+        self.figCF.set_facecolor("none")
+        self.canvasCF = FigureCanvasQTAgg(self.figCF)
+        self.axCF.set_xlabel('profile number'), self.axCF.set_ylabel('average EP / mV')
+        self.figCF.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15), sns.despine()
+
+        # drop-down menu for curve fit selection
+        self.FitSelect_box = QComboBox(self)
+        ls_Fit = ['linear regression', '2nd order polynomial fit']
+        self.FitSelect_box.addItems(ls_Fit), self.FitSelect_box.setEditable(False)
+        self.FitSelect_box.setInsertPolicy(QComboBox.InsertAlphabetically)
+
+        # report section
+        self.msg = QLabel("Details about the curve fit: \n\n\n\n") # fit chosen | fit parameter | chi-square
+        self.msg.setWordWrap(True), self.msg.setFont(QFont('Helvetica Neue', int(fs_font*1.15)))
+
+        # close the window again
+        self.closeDC_button = QPushButton('OK', self)
+        self.closeDC_button.setFixedWidth(100), self.closeDC_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.fit_button = QPushButton('Fit', self)
+        self.fit_button.setFixedWidth(100), self.fit_button.setFont(QFont('Helvetica Neue', fs_font))
+
+        # create grid and groups
+        layoutDC = QGridLayout()
+
+        # add GroupBox to layout and load buttons in GroupBox
+        # widget, fromRow, fromColumn, rowSpan, columnSpan, alignment or widget, row, column, alignment
+        layoutDC.addWidget(self.sliderTD, 0, 0, 1, 2)
+        layoutDC.addWidget(self.sldTD_label, 0, 2)
+        layoutDC.addWidget(self.canvasTD, 1, 0, 1, 3)
+        layoutDC.addWidget(self.canvasCF, 2, 0, 4, 1)
+        layoutDC.addWidget(self.FitSelect_box, 2, 1, 1, 2)
+        layoutDC.addWidget(self.msg, 3, 1, 2, 2)
+        layoutDC.addWidget(self.closeDC_button, 5, 1)
+        layoutDC.addWidget(self.fit_button, 5, 2)
+
+        # Set the layout on the application's window
+        self.setLayout(layoutDC)
+
+    def sliderTD_update(self):
+        # update slider position and label
+        self.nP = min(self.dorder.keys(), key=lambda x: abs(x - self.sliderTD.value()))
+        self.sldTD_label.setText('group: {}'.format(self.nP))
+
+        # re-draw figure
+        dfP_, dfP = dbs.driftCorr_package_step1(nP=self.nP, dataEP=self.ddata, dorder=self.dorder)
+        fig, ax = plot_profileTime(nP=self.nP, df_pack=dfP, resultsEP=self.ddata, dorder=self.dorder, fig=self.figTD,
+                                   ax=self.axTD)
+        self.figTD.canvas.draw()
+
+    def applyDriftCorr(self):
+        print(4855, self.nP)
+        # plot time-drive of the first group
+        dfP_, dfP = dbs.driftCorr_package_step1(nP=self.nP, dataEP=self.ddata, dorder=self.dorder)
+        fig, self.axTD = plot_profileTime(nP=self.nP, df_pack=dfP, resultsEP=self.ddata, dorder=self.dorder,
+                                          fig=self.figTD, ax=self.axTD)
+
+        # drift correction
+        dfP_, dfP = dbs.driftCorr_package_step1(nP=self.nP, dataEP=self.ddata, dorder=self.dorder)
+
+        # !!!TODO: make selected points for fitting as user input
+        [ydata, df_reg, chi_squared, corr_f,
+         results] = dbs.curveFitPack(dfP_=dfP_, numP=3, nP=self.nP, dorder=self.dorder, resultsEP=self.ddata,
+                                     fit_select=self.FitSelect_box.currentText())
+        
+        # update profile time-drive
+        dfP2_ = [self.ddata[p[0]][p[1]].sort_index(ascending=True) for p in self.dorder[self.nP]]
+        self.axTD.plot(pd.concat(dfP2_, axis=0)['EP_mV'].to_numpy(), color='darkorange', lw=1., label='corrected')
+        self.figTD.canvas.draw()
+
+        # plot fit results
+        plot_Fit(df_reg=df_reg, ydata=ydata, figR=self.figCF, axR=self.axCF, show=True)
+        self.figCF.canvas.draw()
+
+    def close_windowSD(self):
+        self.hide()
+
+
+def plot_profileTime(nP, df_pack, resultsEP, dorder, fig=None, ax=None, show=True):
+    plt.ioff()
+    # plot all profiles belonging to the same pacakge
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        ax.cla()
+    ax.set_xlabel('measurement point'), ax.set_ylabel('EP / mV')
+    ax.set_title('EP profile over time for selected group {}'.format(nP))
+
+    # plotting
+    a = ax.plot(df_pack['EP_mV'].to_numpy(), marker='.', lw=0, label='original profiles')
+    # indicate horizontal axes after individual profiles
+    len_prof = [len(resultsEP[p[0]][p[1]].sort_index(ascending=True)) for p in dorder[nP]]
+    m = len_prof[0]
+    for l in len_prof[1:]:
+        ax.axvline(m, color='k', lw=0.75)
+        m += l
+    sns.despine(), plt.tight_layout(pad=0.5)
+
+    if show is True:
+        fig.canvas.draw()
+    else:
+        plt.close()
+    return fig, ax
+
+
+def plot_Fit(df_reg, ydata, figR=None, axR=None, show=True):
+    plt.ioff()
+    if axR is None:
+        figR, axR = plt.subplots()
+    else:
+        axR.cla()
+    axR.set_xlabel('number profile'), axR.set_ylabel('average EP / mV')
+    axR.plot(ydata, lw=0, marker='o')
+    axR.plot(df_reg, ls='-.', color='k')
+    sns.despine(), plt.tight_layout()
+
+    if show is True:
+        figR.canvas.draw()
+    else:
+        plt.close()
 
 
 def plot_initalProfile(data, para, unit, col_name, core, ls_core, dobj_hidEP, ls='-.', fig=None, ax=None, show=True,
