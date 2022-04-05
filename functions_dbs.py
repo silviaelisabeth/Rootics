@@ -875,6 +875,24 @@ def prepDataH2Soutput(dout, results):
     return dout
 
 
+def prepDataEPoutput(dout, results):
+    # handle raw profiles to one dataframe results['raw data']
+    if 'EP raw data' in results.keys():
+        dcore_raw = dict()
+        for c in results['EP raw data'].keys():
+            dcore_raw[c] = pd.concat(results['EP raw data'][c], axis=1)
+        dout['EP raw data'] = pd.concat(dcore_raw, axis=1)
+
+    # adjusted data
+    if 'EP adjusted' in results.keys():
+        dcore_adj = dict()
+        for c in results['EP adjusted'].keys():
+            dcore_adj[c] = pd.concat(results['EP adjusted'][c], axis=1)
+        dout['EP adjusted'] = pd.concat(dcore_adj, axis=1)
+
+    return dout
+
+
 def _actualFolderName(savePath, cfolder, rlabel='run'):
     # check whether file exist already in folder
     ls_folder = next(walk(savePath), (None, None, []))[1]  # returns all the sub-folder
@@ -1383,26 +1401,23 @@ def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µm
     return do2_res
 
 
-def driftCorr_package_step1(nP, dataEP, dorder):
+def _getProfileStack(nP, dataEP, dorder):
     # drift correction for individual package
     dfP_ = [dataEP[p[0]][p[1]].sort_index(ascending=True) for p in dorder[nP]]
     dfP = pd.concat(dfP_, axis=0)
     return dfP_, dfP
 
 
-def curveFitPack(dfP_, numP, nP, dorder, resultsEP, fit_select='polynom2nd'):
+def curveFitPack(dfP_, numP, nP, dorder, resultsEP, fit_select='2nd order polynomial fit'):
     # curve fit
     ydata = [dfP_[n].loc[dfP_[n].index[:numP]].mean()['EP_mV'] for n in range(len(dfP_))]
     xdata = np.arange(len(ydata))
     xnew = np.linspace(0, xdata[-1], num=int(xdata[-1] / 0.2 + 1))
-
-    if len(ydata) > 2 and fit_select == 'polynom2nd':
-        print('polynom 2nd order')
+    if len(ydata) > 2 and fit_select == '2nd order polynomial fit':
         arg = np.polyfit(x=xdata, y=ydata, deg=2)
         c = arg[2]
         df_reg = pd.DataFrame(arg[0] * (xnew ** 2) + arg[1] * xnew + arg[2], index=xnew, columns=['EP_reg'])
-    elif len(ydata) <= 2 or fit_select == 'linear':
-        print('linear regression')
+    elif len(ydata) <= 2 or fit_select == 'linear regression':
         arg = stats.linregress(x=xdata, y=ydata)
         c = arg[1]
         df_reg = pd.DataFrame(arg[0] * xnew + arg[1], index=xnew, columns=['EP_reg'])
@@ -1415,8 +1430,9 @@ def curveFitPack(dfP_, numP, nP, dorder, resultsEP, fit_select='polynom2nd'):
 
     # actual correction of all profiles part of the package | target value - actual value
     corr_f = [c - ydata[n] for n in range(len(xdata))]
+
     for en, r in enumerate(dorder[nP]):
         c, s = r
         resultsEP[c][s] = pd.concat([dfP_[en]['Core'], dfP_[en]['EP_mV'] + corr_f[en]], axis=1)
 
-    return ydata, df_reg, chi_squared, corr_f, resultsEP
+    return ydata, df_reg, chi_squared, arg, corr_f
