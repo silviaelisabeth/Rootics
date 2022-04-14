@@ -64,7 +64,8 @@ sFront = 10                            # sulfidic front defined as percentage ab
 dobj_hidEP, scaleEP = dict(), dict()
 
 # wizard architecture - how are the pages arranged?
-wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "epPage": 4, "charPage": 5}
+wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "epPage": 4, "charPage": 5, "averageLP": 6,
+                     "O2 flux": 7, "EP stats": 8, "joint plots": 9, "final page": 10}
 
 
 # !!! TODO: clean hidden code and unnecessary functions
@@ -73,9 +74,7 @@ wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "ep
 # !!! TODO: write the guideline - update the subtitle accordingly and avoid the "black box" image
 # !!! TODO: make the layout / fontsize of text, buttons,... all the same
 # !!! TODO: combine similar functions / plots of different projects
-# !!! TODO: remove all default core label
-# !!! TODO: add figure profile without penetration depth for O2 project (and H2S)
-# !!!TODO: EP drift correction - make selected points for fitting as user input
+# !!! TODO: split into different py-projects and only load the page --- makes it more readable
 
 class QIComboBox(QComboBox):
     def __init__(self):
@@ -97,6 +96,17 @@ class MagicWizard(QWizard):
         self.setPage(wizard_page_index["epPage"], self.ep_project)
         self.char_project = charPage()
         self.setPage(wizard_page_index["charPage"], self.char_project)
+        self.avergaeLP_project = avProfilePage()
+        self.setPage(wizard_page_index["averageLP"], self.avergaeLP_project)
+        self.o2flux_project = o2fluxPage()
+        self.setPage(wizard_page_index["O2 flux"], self.o2flux_project)
+        self.EPstats_project = epStatsPage()
+        self.setPage(wizard_page_index["EP stats"], self.EPstats_project)
+        self.jointPlot_project = jointPlotPage()
+        self.setPage(wizard_page_index["joint plots"], self.jointPlot_project)
+        self.finalPage = FinalPage()
+        self.setPage(wizard_page_index["final page"], self.finalPage)
+
         # set start page
         self.setStartId(wizard_page_index["IntroPage"])
 
@@ -575,7 +585,7 @@ class o2Page(QWizardPage):
             # calibration from excel file
             dO2_core.update(dbs.O2rearrange(df=self.ddata_shift, unit='µmol/L'))
             results['O2 profile'] = dO2_core
-            print(577, results['O2 profile'][15])
+
             # continue with the process - first execute without any click
             self.continue_processII()
             # update process that shall be executed when button is clicked
@@ -1109,6 +1119,7 @@ class FitWindow(QDialog):
 
         if cstatus > 2:
             self.update_button.setEnabled(False)
+            self.adjust_button.setEnabled(False)
 
         # return current core - and get the samples to plot (via slider selection)
         self.Core = min(ls_core, key=lambda x: abs(x - sliderValue))
@@ -1116,6 +1127,20 @@ class FitWindow(QDialog):
         # get the transmitted data
         self.dShift, self.figO2, self.axO2 = data_shift, figO2, axO2
         self.dfCore, self.FitCore, self.DerivCore = dfCore[self.Core], dfFit[self.Core], dfDeriv[self.Core]
+
+        # generate an independent dictionary of cores in case of updateFit is used
+        self.dfCoreFit, self.dShiftFit = dict(), dict()
+        for c in self.dfCore.keys():
+            df_c = pd.DataFrame(np.array(self.dfCore[c]), index=self.dfCore[c].index, columns=self.dfCore[c].columns)
+            self.dfCoreFit[c] = df_c
+
+        for c in self.dShift.keys():
+            dicS = dict()
+            for s in self.dShift[c].keys():
+                df_s = pd.DataFrame(np.array(self.dShift[c][s]), index=self.dShift[c][s].index,
+                                    columns=self.dShift[c][s].columns)
+                dicS[s] = df_s
+            self.dShiftFit[c] = dicS
 
         # plot all samples from current core
         fig3 = plot_Fitselect(core=self.Core, sample=min(self.FitCore.keys()), dfCore=self.dfCore, dfFit=self.FitCore,
@@ -1136,6 +1161,7 @@ class FitWindow(QDialog):
 
         # connect checkbox and load file button with a function
         self.update_button.clicked.connect(self.updateFit)
+        self.adjust_button.clicked.connect(self.adjustData)
         self.save1_button.clicked.connect(self.save_fit)
         self.close_button.clicked.connect(self.close_window)
 
@@ -1155,6 +1181,8 @@ class FitWindow(QDialog):
         self.close_button.setFixedWidth(100)
         self.update_button = QPushButton('update fit', self)
         self.update_button.setFixedWidth(100)
+        self.adjust_button = QPushButton('adjust data', self)
+        self.adjust_button.setFixedWidth(100)
         self.save1_button = QPushButton('Save', self)
         self.save1_button.setFixedWidth(100)
 
@@ -1239,7 +1267,8 @@ class FitWindow(QDialog):
         BtnGp.setLayout(gridBtn)
         gridBtn.addWidget(self.close_button, 1, 0)
         gridBtn.addWidget(self.update_button, 1, 1)
-        gridBtn.addWidget(self.save1_button, 1, 2)
+        gridBtn.addWidget(self.adjust_button, 1, 2)
+        gridBtn.addWidget(self.save1_button, 1, 3)
 
         # add everything to the window layout
         self.setLayout(mlayout2)
@@ -1288,30 +1317,32 @@ class FitWindow(QDialog):
 
         self.figFit.canvas.draw()
 
-    def cropDF(self, s):
+    def cropDF(self, s, df):
         if self.ls_cropx:
             # in case there was only 1 point selected -> extend the list to the other end
             if len(self.ls_cropx) == 1:
-                sub = (self.dfCore[s].index[0] - self.ls_cropx[0], self.dfCore[s].index[-1] - self.ls_cropx[0])
+                sub = (df[s].index[0] - self.ls_cropx[0], df[s].index[-1] - self.ls_cropx[0])
                 if np.abs(sub[0]) < np.abs(sub[1]):
-                    self.ls_cropx = [self.ls_cropx[0], self.dfCore[s].index[-1]]
+                    self.ls_cropx = [self.ls_cropx[0], df[s].index[-1]]
                 else:
-                    self.ls_cropx = [self.dfCore[s].index[0], self.ls_cropx[0]]
+                    self.ls_cropx = [df[s].index[0], self.ls_cropx[0]]
 
             # actually crop the depth profile to the area selected.
             # In case more than 2 points have been selected, choose the outer ones
-            dcore_crop = self.dfCore[s].loc[min(self.ls_cropx): max(self.ls_cropx)]
+            dcore_crop = df[s].loc[min(self.ls_cropx): max(self.ls_cropx)]
         else:
-            dcore_crop = self.dfCore[s]
+            dcore_crop = df[s]
         return dcore_crop
 
     def popOutlier(self, dcore_crop):
         ls_pop = [min(dcore_crop.index.to_numpy(), key=lambda x: abs(x - self.ls_out[p]))
                     for p in range(len(self.ls_out))]
+
         # drop in case value is still there
         for p in ls_pop:
             if p in dcore_crop.index:
                 dcore_crop.drop(p, inplace=True)
+
         return dcore_crop
 
     def reFit(self, dcore_crop):
@@ -1322,12 +1353,15 @@ class FitWindow(QDialog):
         self.chi2.setText('Goodness of fit (reduced χ2): ' + str(round(res.redchi, 3)))
         return df_fit_crop, df_fitder
 
-    def updateFit(self):
+    def adjustData(self):
+        # it actually adjusts the data in the profile while update fit only uses these data for calculating the swi
+        # but does not trim or remove data from the original profile
+
         # current core, current sample
         c, s = self.Core, int(self.sld1_label.text().split(' ')[-1])
 
         # crop dataframe to selected range
-        dcore_crop = self.cropDF(s=s)
+        dcore_crop = self.cropDF(s=s, df=self.dfCore)
 
         # pop outliers from depth profile
         if self.ls_out:
@@ -1344,6 +1378,42 @@ class FitWindow(QDialog):
         # exchange the updated depth profile to the dictionary (to plot all)
         self.dShift[c][s] = pd.DataFrame(np.array(dcore_crop), index=dcore_crop.index - df_fitder.idxmin().values[0],
                                          columns=dcore_crop.columns)
+        # plot baseline corrected depth profiles for special sample
+        fig0 = dbs.GUI_baslineShiftCore(data_shift=self.dShift[c], core_select=self.Core, plot_col='mV', fig=self.figO2,
+                                        ax=self.axO2, grp_label=grp_label)
+        self.figO2.canvas.draw()
+
+    def updateFit(self):
+        # only uses data for calculating the swi (applying trim, mark outliers, etc.) but does not trim or remove
+        # data from the original profile (NO OVERWRITING) while adjust data actually adjusts data in the profile
+
+        # current core, current sample
+        c, s = self.Core, int(self.sld1_label.text().split(' ')[-1])
+
+        # crop dataframe to selected range
+        dcore_crop = self.cropDF(s=s, df=self.dfCoreFit)
+        self.ls_cropx = list()
+
+        # pop outliers from depth profile
+        if self.ls_out:
+            dcore_crop = self.popOutlier(dcore_crop=dcore_crop)
+            self.ls_out = list()
+
+        # re-do fitting - curve fit and baseline finder
+        df_fit_crop, df_fitder = self.reFit(dcore_crop=dcore_crop)
+
+        # re-draw fit plot
+        fig3 = plot_FitUpdate(core=self.Core, nr=s, dic_dcore=dcore_crop, dfit=df_fit_crop, dic_deriv=df_fitder,
+                              ax1=self.ax1Fit, ax=self.axFit, fig=self.figFit)
+        self.figFit.canvas.draw()
+
+        # exchange the updated depth profile to the dictionary (to plot all)
+        self.dShiftFit[c][s] = pd.DataFrame(np.array(dcore_crop), index=dcore_crop.index - df_fitder.idxmin().values[0],
+                                            columns=dcore_crop.columns)
+        # update the depth / index of each dataframe according to the identified SWI
+        self.dShift[c][s] = pd.DataFrame(np.array(self.dfCore[s]), index=self.dfCore[s].index - df_fitder.idxmin().values[0],
+                                            columns=self.dfCore[s].columns)
+
         # plot baseline corrected depth profiles for special sample
         fig0 = dbs.GUI_baslineShiftCore(data_shift=self.dShift[c], core_select=self.Core, plot_col='mV', fig=self.figO2,
                                         ax=self.axO2, grp_label=grp_label)
@@ -4328,10 +4398,9 @@ class epPage(QWizardPage):
         global dout
         # preparation to save data
         dout = dbs.prepDataEPoutput(dout=dout, results=results)
-        print(4334, 'EP prep done')
+
         # actual saving of data and figures
         self.save_EPdata()
-        print(4337)
         self.save_EPfigure()
 
         # Information that saving was successful
@@ -4349,7 +4418,6 @@ class epPage(QWizardPage):
     def save_EPfigure(self):
         ls_saveFig = list()
         [ls_saveFig.append(i) for i in self.field('saving parameters').split(',') if 'fig' in i]
-        print(4352, ls_saveFig)
         if len(ls_saveFig) > 0:
             save_path = self.field("Storage path") + '/Graphs/'
             # make folder "Graphs" if it doesn't exist
@@ -4415,12 +4483,9 @@ class epPage(QWizardPage):
             os.makedirs(save_folder)
 
         for f in dfigDC.keys():
-            print(f)
             for t in ls_figtype:
                 name = save_folder + 'CurveReg_group-{}.'.format(f) + t
-                dfigDC[f].set_size_inches(18.5, 10.5)
-                print(4422, name)
-
+                # dfigDC[f].set_size_inches(18.5, 10.5)
                 dfigDC[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=100)
 
     def reset_EPpage(self):
@@ -4963,14 +5028,14 @@ def fig4saving_EP(ls_core, draw, dadj, ddrift, dfit):
 
         # add legend for fit info to curve fitting plot
         if g in dfit.keys():
-            figR, axR = plot_Fit(df_reg=dfit[g]['regression curve'], ydata=dfit[g]['average EP'], show=False)
+            figR, axR = plot_Fit(df_reg=dfit[g]['regression curve'], ydata=dfit[g]['average EP'], figR=None, axR=None,
+                                 show=False)
 
             ls_label = [('drift correction:', g), ('function:', dfit[g]['regression']),
                         ('fit parameter:', dfit[g]['fit parameter']), ('χ2:', dfit[g]['chi-square'])]
-            xpos, ypos = 1, 1
+            xpos, ypos = (axR.get_xlim()[1] - axR.get_xlim()[0])*0.75, (axR.get_ylim()[1] - axR.get_ylim()[0])*0.9
             for en, label in enumerate(ls_label):
-                print(xpos, ypos-en*1/50)
-                axR.annotate(label, xy=(xpos, ypos-en*1/50), xytext=(0, 15), textcoords='offset points',
+                axR.annotate(label, xy=(xpos, ypos-en*1/500), xytext=(0, 5), textcoords='offset points',
                              ha='center', va='bottom', fontsize=12)
             dfigDC[g] = figR
 
@@ -5020,7 +5085,7 @@ def plot_profileTime(nP, df_pack, resultsEP, dorder, fig=None, ax=None, show=Tru
 def plot_Fit(df_reg, ydata, figR=None, axR=None, show=True):
     plt.ioff()
     if axR is None:
-        figR, axR = plt.subplots()
+        figR, axR = plt.subplots(figsize=(5, 3))
     else:
         axR.cla()
     axR.set_xlabel('number profile'), axR.set_ylabel('average EP / mV')
@@ -5204,6 +5269,146 @@ class charPage(QWizardPage):
     def __init__(self, parent=None):
         super(charPage, self).__init__(parent)
         self.setTitle("Further sediment characterization")
+        self.setSubTitle("Select how you want to pursue next.  In case you have more than one profile for a core,  "
+                         "select Average depth profiles.  Then,  you can choose to calculate the O2 consumption as "
+                         "well as some EP statistics.  The last step could be to plot different parameters together"
+                         " in a joint plot. \n")
+
+        # create layout
+        self.initUI()
+
+        # connect checkbox and load file button with a function
+        self.av_box.clicked.connect(self.nextStep_selection)
+        self.O2stats_box.clicked.connect(self.nextStep_selection)
+        self.EPstats_box.clicked.connect(self.nextStep_selection)
+        self.jointPlot_box.clicked.connect(self.nextStep_selection)
+
+        # when all conditions are met, enable NEXT button
+        self.ls_next = QLineEdit()
+        self.registerField("next steps*", self.ls_next)
+
+    def initUI(self):
+        # checkbox for subprojects
+        self.av_box = QCheckBox('Average depth profiles per core', self)
+        self.av_box.setFont(QFont('Helvetica Neue', 12))
+
+        self.O2stats_box = QCheckBox('O2 consumption', self)
+        self.O2stats_box.setFont(QFont('Helvetica Neue', 12))
+
+        self.EPstats_box = QCheckBox('EP statistics', self)
+        self.EPstats_box.setFont(QFont('Helvetica Neue', 12))
+
+        self.jointPlot_box = QCheckBox('joint plot of parameters', self)
+        self.jointPlot_box.setFont(QFont('Helvetica Neue', 12))
+
+        # creating window layout
+        w2 = QWidget()
+        mlayout2 = QVBoxLayout(w2)
+        vbox_top, vbox_middle, vbox_bottom = QHBoxLayout(), QHBoxLayout(), QHBoxLayout()
+        mlayout2.addLayout(vbox_top), mlayout2.addLayout(vbox_middle), mlayout2.addLayout(vbox_bottom)
+
+        para_settings = QGroupBox("Sediment analysis and output")
+        grid_set = QGridLayout()
+        para_settings.setFont(QFont('Helvetica Neue', 12))
+        vbox_middle.addWidget(para_settings)
+        para_settings.setFixedHeight(150)
+        para_settings.setLayout(grid_set)
+
+        # include widgets in the layout
+        grid_set.addWidget(self.av_box, 0, 0)
+        grid_set.addWidget(self.O2stats_box, 1, 0)
+        grid_set.addWidget(self.EPstats_box, 2, 0)
+        grid_set.addWidget(self.jointPlot_box, 3, 0)
+
+        self.setLayout(mlayout2)
+
+    def nextStep_selection(self):
+        ls_next = list()
+        if self.av_box.isChecked() is True:
+            ls_next.append('averageLP')
+        if self.O2stats_box.isChecked() is True:
+            ls_next.append('O2 flux')
+        if self.EPstats_box.isChecked() is True:
+            ls_next.append('EP stats')
+        if self.jointPlot_box.isChecked() is True:
+            ls_next.append('joint plots')
+        self.ls_next.setText(','.join(ls_next))
+
+    def nextId(self) -> int:
+        ls_para = list(self.field('next steps').split(','))
+        if self.field('next steps'):
+            return wizard_page_index[ls_para[0]]
+        else:
+            return wizard_page_index["joint plots"]
+
+
+# -----------------------------------------------
+class avProfilePage(QWizardPage):
+    def __init__(self, parent=None):
+        super(avProfilePage, self).__init__(parent)
+        self.setTitle("Average microsensor profiles per core")
+        self.setSubTitle("\n")
+
+    def nextId(self) -> int:
+        ls_para = list(self.field('next steps').split(','))
+        # remove already visited pages
+        ls_para.remove("averageLP")
+        if len(ls_para) >= 1:
+            return wizard_page_index[ls_para[0]]
+        else:
+            return wizard_page_index['final page']
+
+
+# -----------------------------------------------
+class o2fluxPage(QWizardPage):
+    def __init__(self, parent=None):
+        super(o2fluxPage, self).__init__(parent)
+        self.setTitle("Calculate O2 flux consumption rates")
+        self.setSubTitle("\n")
+
+    def nextId(self) -> int:
+        ls_para = list(self.field('next steps').split(','))
+        # remove already visited pages
+        ls_para.remove("averageLP"), ls_para.remove("O2 flux")
+        if len(ls_para) >= 1:
+            return wizard_page_index[ls_para[0]]
+        else:
+            return wizard_page_index['final page']
+
+
+# -----------------------------------------------
+class epStatsPage(QWizardPage):
+    def __init__(self, parent=None):
+        super(epStatsPage, self).__init__(parent)
+        self.setTitle("EP statistics")
+        self.setSubTitle("\n")
+
+    def nextId(self) -> int:
+        ls_para = list(self.field('next steps').split(','))
+        # remove already visited pages
+        ls_para.remove("averageLP"), ls_para.remove("O2 flux"), ls_para.remove("EP stats")
+        if len(ls_para) >= 1:
+            return wizard_page_index[ls_para[0]]
+        else:
+            return wizard_page_index['final page']
+
+
+# -----------------------------------------------
+class jointPlotPage(QWizardPage):
+    def __init__(self, parent=None):
+        super(jointPlotPage, self).__init__(parent)
+        self.setTitle("Joint plots of different parameters")
+        self.setSubTitle("\n")
+
+    def nextId(self) -> int:
+        return wizard_page_index['final page']
+
+
+class FinalPage(QWizardPage):
+    def __init__(self, parent=None):
+        super(FinalPage, self).__init__(parent)
+        self.setTitle("Final page")
+        self.setSubTitle("Thanks for visiting.")
 
 
 # -----------------------------------------------
