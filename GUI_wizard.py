@@ -5346,7 +5346,7 @@ class charPage(QWizardPage):
 class avProfilePage(QWizardPage):
     def __init__(self, parent=None):
         super(avProfilePage, self).__init__(parent)
-        self.setTitle("Average microsensor profiles per core")
+        self.setTitle("Average micro-sensor profiles per core")
         self.setSubTitle("\n")
 
     def nextId(self) -> int:
