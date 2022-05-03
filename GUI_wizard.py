@@ -670,29 +670,8 @@ class o2Page(QWizardPage):
                         self.continue_button.clicked.connect(self.continue_processI)
 
     def load_O2data(self):
-        # convert potential str-list into list of strings
-        if '[' in self.field("Data"):
-            ls_file = [i.strip()[1:-1] for i in self.field("Data")[1:-1].split(',')]
-        else:
-            ls_file = list(self.field("Data"))
-
-        # load excel sheet with all measurements
-        ls_dsheets = dict(map(lambda f: (f[0], dbs.loadMeas4GUI(file=f[1])), enumerate(ls_file)))
-        dsheets = ls_dsheets[0]
-        for en in range(len(ls_file)-1):
-            dsheets = merge(dsheets, ls_dsheets[en+1])
-
-        # get the information how the columns for depth, concentration, and signal are labeled for each analyte
-        global dcol_label
-        for a in dsheets.keys():
-            dcol_label[a] = list(dsheets[a].columns[2:])
-
-        # if self.field("SoftwareFile") == 'True':
-        #     # raw measurement file pre-processed and saved per default as rawData file
-        #     dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
-        # else:
-        #     # old version with pre-processed files:
-        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+        # raw measurement file pre-processed and saved per default as rawData file
+        dsheets = _loadGlobData(file_str=self.field("Data"))
 
         # pre-check whether O2_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='O2')
@@ -1942,12 +1921,8 @@ class phPage(QWizardPage):
                 self.continuepH_button.setEnabled(False)# , self.swi_edit.setEnabled(False)
 
     def load_pHdata(self):
-        dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
-        # if self.field("SoftwareFile") == 'True':
-        #     dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
-        # else:
-        #     # old version with pre-processed files:
-        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+        # raw measurement file pre-processed and saved per default as rawData file
+        dsheets = _loadGlobData(file_str=self.field("Data"))
 
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='pH')
@@ -2293,7 +2268,7 @@ class AdjustpHWindow(QDialog):
 
     def initUI(self):
         self.setWindowTitle("Adjustment of data presentation")
-        self.setGeometry(650, 75, 500, 400) # x-position, y-position, width, height
+        self.setGeometry(650, 75, 500, 600) # x-position, y-position, width, height
 
         # add description about how to use this window (slider, outlier detection, trim range)
         self.msg = QLabel("Use the slider to switch between samples belonging to the selected core. \nYou have the "
@@ -2312,6 +2287,7 @@ class AdjustpHWindow(QDialog):
         self.figpHs, self.axpHs = plt.subplots(figsize=(3, 2))
         self.figpHs.set_facecolor("none")
         self.canvaspHs = FigureCanvasQTAgg(self.figpHs)
+        self.navipHs = NavigationToolbar2QT(self.canvaspHs, self)
         self.axpHs.set_xlabel('pH value'), self.axpHs.set_ylabel('Depth / µm')
         self.axpHs.invert_yaxis()
         self.figpHs.subplots_adjust(bottom=0.2, right=0.95, top=0.9, left=0.15)
@@ -2360,7 +2336,7 @@ class AdjustpHWindow(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        plotGp.setMinimumHeight(300)
+        plotGp.setMinimumHeight(400)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
         plotGp.setLayout(gridFig)
@@ -2369,10 +2345,11 @@ class AdjustpHWindow(QDialog):
         gridFig.addWidget(self.slider1pH, 1, 1)
         gridFig.addWidget(self.sldpH1_label, 1, 0)
         gridFig.addWidget(self.canvaspHs, 2, 1)
-        gridFig.addWidget(pHtrim_label, 3, 0)
-        gridFig.addWidget(self.pHtrim_edit, 3, 1)
-        gridFig.addWidget(swiSample_label, 4, 0)
-        gridFig.addWidget(self.swiSample_edit, 4, 1)
+        gridFig.addWidget(self.navipHs, 3, 1)
+        gridFig.addWidget(pHtrim_label, 4, 0)
+        gridFig.addWidget(self.pHtrim_edit, 4, 1)
+        gridFig.addWidget(swiSample_label, 5, 0)
+        gridFig.addWidget(self.swiSample_edit, 5, 1)
 
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
@@ -2790,21 +2767,8 @@ class h2sPage(QWizardPage):
             self.continueh2s_button.setEnabled(True), self.swih2s_edit.setEnabled(True)
 
     def load_H2Sdata(self):
-        dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
-        # if self.field("SoftwareFile") == 'True':
-        #     dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
-        # else:
-        #     # old version with pre-processed files:
-        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
-
-        # pre-check whether pH_all in sheet names
-        sheet_select = dbs.sheetname_check(dsheets, para='H2S')
-
-        #  prepare file depending on the type
-        ddata = dsheets[sheet_select].set_index('Nr')
-        global grp_label
-        if grp_label is None:
-            grp_label = ddata.columns[0]
+        # raw measurement file pre-processed and saved per default as rawData file
+        dsheets = _loadGlobData(file_str=self.field("Data"))
 
         # list all available cores for pH sheet
         self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]].to_numpy()))
@@ -3532,6 +3496,7 @@ class AdjustpHWindowS(QDialog):
         self.figH2Ss, self.axH2Ss = plt.subplots(figsize=(3, 2.5))
         self.figH2Ss.set_facecolor("none")
         self.canvasH2Ss = FigureCanvasQTAgg(self.figH2Ss)
+        self.naviH2Ss = NavigationToolbar2QT(self.canvasH2Ss, self)
         self.axH2Ss.set_xlabel('H2S / µmol/L'), self.axH2Ss.set_ylabel('Depth / µm')
         self.axH2Ss.invert_yaxis()
         self.figH2Ss.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.15)
@@ -3588,10 +3553,11 @@ class AdjustpHWindowS(QDialog):
         gridFig.addWidget(self.slider1H2S, 1, 1)
         gridFig.addWidget(self.sldH2S1_label, 1, 0)
         gridFig.addWidget(self.canvasH2Ss, 2, 1)
-        gridFig.addWidget(H2Strim_label, 3, 0)
-        gridFig.addWidget(self.H2Strim_edit, 3, 1)
-        gridFig.addWidget(swiSample_label, 4, 0)
-        gridFig.addWidget(self.swiSample_edit, 4, 1)
+        gridFig.addWidget(self.naviH2Ss, 3, 1)
+        gridFig.addWidget(H2Strim_label, 4, 0)
+        gridFig.addWidget(self.H2Strim_edit, 4, 1)
+        gridFig.addWidget(swiSample_label, 5, 0)
+        gridFig.addWidget(self.swiSample_edit, 5, 1)
 
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
@@ -4186,12 +4152,8 @@ class epPage(QWizardPage):
             print('plot time-drive of all profiles -> ask for which profiles belong together')
 
     def load_EPdata(self):
-        dsheets = dbs._loadFile4GUI(file=self.field("Data"))
-        # if self.field("SoftwareFile") == 'True':
-        #     dsheets = dbs._loadFile4GUI(file=self.field("Data"))
-        # else:
-        #     # old version with pre-processed files:
-        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+        # raw measurement file pre-processed and saved per default as rawData file
+        dsheets = _loadGlobData(file_str=self.field("Data"))
         self.dsheets = dsheets
 
         # pre-check whether EP_all in sheet names
@@ -4624,6 +4586,7 @@ class AdjustWindowEP(QDialog):
         self.figEPs, self.axEPs = plt.subplots(figsize=(3, 2))
         self.figEPs.set_facecolor("none")
         self.canvasEPs = FigureCanvasQTAgg(self.figEPs)
+        self.naviEPs = NavigationToolbar2QT(self.canvasEPs, self)
         self.axEPs.set_xlabel('EP / mV'), self.axEPs.set_ylabel('Depth / µm')
         self.axEPs.invert_yaxis()
         self.figEPs.subplots_adjust(bottom=0.2, right=0.95, top=0.85, left=0.25)
@@ -4680,6 +4643,7 @@ class AdjustWindowEP(QDialog):
         gridFig.addWidget(self.slider1EP, 1, 1)
         gridFig.addWidget(self.sldEP1_label, 1, 0)
         gridFig.addWidget(self.canvasEPs, 2, 1)
+        gridFig.addWidget(self.naviEPs, 2, 1)
         gridFig.addWidget(EPtrim_label, 3, 0)
         gridFig.addWidget(self.EPtrim_edit, 3, 1)
         gridFig.addWidget(swiSample_label, 4, 0)
@@ -5584,6 +5548,29 @@ class SalConvWindowO2(QDialog):
     def close_window(self):
         self.hide()
         self.salinity.setText(str(round(results['salinity PSU'], 3)))
+
+
+# --------------------------------------------------------------
+# functions for all
+def _loadGlobData(file_str):
+    # convert potential str-list into list of strings
+    if '[' in file_str:
+        ls_file = [i.strip()[1:-1] for i in file_str[1:-1].split(',')]
+    else:
+        ls_file = list(file_str)
+
+    # load excel sheet with all measurements
+    ls_dsheets = dict(map(lambda f: (f[0], dbs.loadMeas4GUI(file=f[1])), enumerate(ls_file)))
+    dsheets = ls_dsheets[0]
+    for en in range(len(ls_file)-1):
+        dsheets = merge(dsheets, ls_dsheets[en+1])
+
+    # get the information how the columns for depth, concentration, and signal are labeled for each analyte
+    global dcol_label
+    if bool(dcol_label) is False:
+        for a in dsheets.keys():
+            dcol_label[a] = list(dsheets[a].columns[2:])
+    return dsheets
 
 
 # ---------------------------------------------------------------------------------------------------------------------
