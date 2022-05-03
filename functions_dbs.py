@@ -40,13 +40,15 @@ def plot_surfacefinder(dic_dcore, dfit, dic_deriv, core, nr, figsize=(5, 3)):
     ax1 = ax.twinx()
     ax.set_xlabel('Depth [µm]'), ax.set_ylabel('O2 [mV]'), ax1.set_ylabel('1st derivative', color='#0077b6')
 
-    ax.plot(dic_dcore[core][nr].index, dic_dcore[core][nr]['O2_mV'], lw=0, marker='o', ms=4, color='k')
+    c = 'O2_mV' if 'O2' in dic_dcore[core][nr].columns else dic_dcore[core][nr].columns[0]
+    ax.plot(dic_dcore[core][nr].index, dic_dcore[core][nr][c], lw=0, marker='o', ms=4, color='k')
     ax.plot(dfit[core][nr][1], lw=0.75, ls=':', color='k')
 
     ax1.plot(dic_deriv[core][nr], lw=1., color='#0077b6')
     ax1.axvline(dic_deriv[core][nr].idxmin().values[0], ls='-.', color='darkorange', lw=1.5)
     text = 'surface level \nat {:.1f}µm'
-    ax.text(dic_deriv[core][nr].idxmin().values[0]*2, dic_dcore[core][nr]['O2_mV'].max()*1.15,
+    c = 'O2_mV' if 'O2' in dic_dcore[core][nr].columns else dic_dcore[core][nr].columns[0]
+    ax.text(dic_deriv[core][nr].idxmin().values[0]*2, dic_dcore[core][nr][c].max()*1.15,
             text.format(dic_deriv[core][nr].idxmin().values[0]), ha="left", va="center", color='darkorange', size=9.5)
 
     sns.despine()
@@ -330,7 +332,10 @@ def GUI_baslineShift(data_shift, core, ls_core, plot_col, grp_label, fig=None, a
     for c in data_shift[core_select][list(data_shift[core_select].keys())[0]].columns:
         if plot_col in c:
             col2plot = c
-            unit = col2plot.split('_')[1]
+            if '_' in col2plot:
+                unit = col2plot.split('_')[1]
+            else:
+                unit = col2plot.split('(')[1].split(')')[0]
 
     # plot figure
     if ax is None:
@@ -381,11 +386,23 @@ def GUI_baslineShiftCore(data_shift, core_select, plot_col, grp_label, fig, ax):
         if isinstance(plot_col, int):
             if plot_col == i:
                 col2plot = i
-                unit = 'mV' if plot_col == 0 else col2plot.split('_')[1]
+                if plot_col == 0:
+                    unit = 'mV'
+                else:
+                    if '_' in col2plot:
+                        unit = col2plot.split('_')[1]
+                    else:
+                        unit = col2plot.split('(')[1].split(')')[0]
         else:
             if plot_col in i:
                 col2plot = i
-                unit = 'mV' if plot_col == 0 else col2plot.split('_')[1]
+                if plot_col == 0:
+                    unit = 'mV'
+                else:
+                    if '_' in col2plot:
+                        unit = col2plot.split('_')[1]
+                    else:
+                        unit = col2plot.split('(')[1].split(')')[0]
 
     if unit is None:
         print('Nothing to plot here. Expected column not in dataframe.')
@@ -437,7 +454,7 @@ def loadMeas4GUI(file):
     df_excel = pd.read_excel(file, sheet_name=None)
 
     # identify sensors used
-    dfsens = df_excel['Sensors'][['Name', 'Unit']]
+    dfsens = df_excel['Sensors'][['Type', 'Unit']]
 
     # check requirements for meta data and correlation (where applicable)
     col = precheckMeta(ls_cols=df_excel.keys())
@@ -484,6 +501,7 @@ def splitIntoSamples(dprof, df_meta):
         # prepare label for all eventualities
         if 'Sensor' in label_par:
             label_par = label_par.split(' ')[-1]
+            print(504, label_par)
 
         # metadata sheet
         ls_empty = list()
@@ -495,7 +513,7 @@ def splitIntoSamples(dprof, df_meta):
             if 'Time' in i:
                 colInd = i
 
-                # split into profiles for individual samples and cores; add Nr and group information
+        # split into profiles for individual samples and cores; add Nr and group information
         dprofile = splitDF2samples(dfex=df_meta, ls_empty=ls_empty, dprof=dprof, par=par, colInd=colInd)
 
         # add sample-ID and group label to DF for sorting
@@ -508,7 +526,11 @@ def splitIntoSamples(dprof, df_meta):
 
 
 def splitDF2samples(dfex, ls_empty, dprof, par, colInd):
-    group = dfex['group code'].to_numpy()[0].split(' ')[0]
+    if 'code' in dfex.columns:
+        c = 'code'
+    elif 'Code' in dfex.columns:
+        c = 'Code'
+    group = dfex[c].to_numpy()[0].split(' ')[0]
     for c in dprof[par].columns:
         if 'Depth' in c:
             colD = c
@@ -596,7 +618,7 @@ def prepAnalytes(dprof):
         ls_cols = list()
         for c in dprof['Oxygen'].columns:
             if 'Concentration' in c:
-                ls_cols.append('O2_µM')
+                ls_cols.append('O2_µmol/l')
             elif 'Signal' in c:
                 ls_cols.append('O2_mV')
             else:
@@ -614,6 +636,16 @@ def prepAnalytes(dprof):
 
     for c in dprof.keys():
         if 'EP' in c or 'Ep' in c or 'ep' in c:
+            ls_cols = list()
+            for co in dprof[c].columns:
+                if 'Concentration' in co:
+                    ls_cols.append('EP')
+                elif 'Signal' in co:
+                    ls_cols.append('EP_mV')
+                else:
+                    ls_cols.append(co)
+            dprof[c].columns = ls_cols
+        elif 'Redox' in c or 'redox' in c:
             ls_cols = list()
             for co in dprof[c].columns:
                 if 'Concentration' in co:
@@ -670,7 +702,7 @@ def load_measurements(dsheets, ls_core, para):
 
                 # crop dataframe of sample --> remove core information
                 ls_col = list()
-                [ls_col.append(i) for i in list(df.columns) if 'M' in i or 'mV' in i]
+                [ls_col.append(i) for i in list(df.columns) if 'M' in i or 'mV' in i or 'mol' in i]
                 dcore[n] = df[ls_col].sort_index()
             elif 'H2S' in para or 'h2s' in para:
                 df = dfcore[dfcore.index == n].set_index(col_[0]).dropna()
@@ -1040,7 +1072,8 @@ def fit_baseline(ls_core, ls_nr, dic_dcore, steps, gmod):
 def baseline_finder(dic_dcore, core, nr, steps, model):
     # curve fit according to selected model
     xdata = dic_dcore[core][nr].index
-    ydata = dic_dcore[core][nr]['O2_mV']
+    c = 'O2_mV' if 'O2' in dic_dcore[core][nr].columns else dic_dcore[core][nr].columns[0]
+    ydata = dic_dcore[core][nr][c]
 
     # initial parameters
     para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001)
@@ -1074,7 +1107,8 @@ def baseline_finder(dic_dcore, core, nr, steps, model):
 def baseline_finder_DF(dic_dcore, steps, model):
     # curve fit according to selected model
     xdata = dic_dcore.index
-    ydata = dic_dcore['O2_mV']
+    c = 'O2_mV' if 'O2' in dic_dcore.columns else dic_dcore.columns[0]
+    ydata = dic_dcore[c]
 
     # initial parameters
     para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001)
@@ -1244,9 +1278,9 @@ def O2rearrange(df, unit='µmol/L'):
     # pre-filter columns to get the desired ones
     dex = pd.concat(df[list(df.keys())[0]], axis=1)
     if 'µ' in unit:
-        col = [c for c in dex.columns.levels[1] if 'M' in c][0]
+        col = [c for c in dex.columns.levels[1] if 'M' in c or 'mol' in c][0]
     else:
-        col = [c for c in dex.columns.levels[1] if 'M' not in c][0]
+        col = [c for c in dex.columns.levels[1] if 'M' not in c or 'mol' in c][0]
 
     dO2_core = dict()
     for core in df.keys():
@@ -1429,8 +1463,7 @@ def curveFitPack(dfP_, numP, nP, dorder, resultsEP, fit_select='2nd order polyno
     chi_squared = np.sum((np.polyval(arg, xdata) - ydata) ** 2)
 
     # actual correction of all profiles part of the package | target value - actual value
-    corr_f = [c - ydata[n] for n in range(len(xdata))]
-
+    corr_f = [c - ydata[n] - arg[-1] for n in range(len(xdata))]
     for en, r in enumerate(dorder[nP]):
         c, s = r
         resultsEP[c][s] = pd.concat([dfP_[en]['Core'], dfP_[en]['EP_mV'] + corr_f[en]], axis=1)

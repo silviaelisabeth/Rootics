@@ -25,6 +25,7 @@ import pandas as pd
 from lmfit import Model
 import os
 import re
+from mergedeep import merge
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT, FigureCanvasQTAgg
 
@@ -50,7 +51,7 @@ fs_font, fs_ = 10, 10
 sns.set_context('paper'), sns.set_style('ticks')
 
 # global variables for individual projects
-results, dout = dict(), dict()
+dcol_label, results, dout = dict(), dict(), dict()
 
 # O2 project
 core_select, userCal, ret = None, None, None
@@ -139,7 +140,7 @@ class IntroPage(QWizardPage):
 
         # connect checkbox and load file button with a function
         self.load_button.clicked.connect(self.load_data)
-        self.OutPut_box.stateChanged.connect(self.softwareFile)
+        # self.OutPut_box.stateChanged.connect(self.softwareFile)
         self.save_button.clicked.connect(self.save_path)
         self.set_button.clicked.connect(self.save_settings)
         self.h2s_box.stateChanged.connect(self.total_sulfide)
@@ -176,7 +177,7 @@ class IntroPage(QWizardPage):
         self.inputFileLineEdit.setValidator(QtGui.QDoubleValidator())
         self.inputFileLineEdit.setFixedWidth(300), self.inputFileLineEdit.setAlignment(Qt.AlignRight)
         self.inputFileLineEdit.setFont(QFont('Helvetica Neue', int(0.9*fs_font)))
-        self.OutPut_box = QCheckBox('output file', self)
+        # self.OutPut_box = QCheckBox('output file', self)
 
         # directory to store files
         self.save_button = QPushButton('Storage path', self)
@@ -223,19 +224,20 @@ class IntroPage(QWizardPage):
         # include widgets in the layout
         grid_file.addWidget(self.load_button, 0, 0)
         grid_file.addWidget(self.inputFileLineEdit, 0, 1)
-        grid_file.addWidget(self.OutPut_box, 0, 2)
+        # grid_file.addWidget(self.OutPut_box, 0, 2)
         grid_file.addWidget(self.save_button, 1, 0)
         grid_file.addWidget(self.inputSaveLineEdit, 1, 1)
         grid_file.addWidget(self.set_button, 2, 0)
         self.setLayout(mlayout)
 
     def load_data(self):
-        fname, filter = QFileDialog.getOpenFileName(self, "Select specific excel file for measurement analysis",
-                                                    "Text files (*.xls *.csv *xlsx)")
-        self.fname.setText(fname)
+        # load all files at a time that shall be analyzed together
+        fname, filter = QFileDialog.getOpenFileNames(self, "Select specific excel file for measurement analysis",
+                                                     "Text files (*.xls *.csv *xlsx)")
+        self.fname.setText(str(fname))
         if fname:
-            self.inputFileLineEdit.setText(fname)
-            self.fname.setText(fname)
+            self.inputFileLineEdit.setText(str(fname))
+            self.fname.setText(str(fname))
 
     def save_path(self):
         fsave = QtWidgets.QFileDialog.getExistingDirectory(self, 'Select Folder')
@@ -253,8 +255,8 @@ class IntroPage(QWizardPage):
         else:
             wSet.show()
 
-    def softwareFile(self):
-        self.OutPut.setText(str(self.OutPut_box.isChecked()))
+    #def softwareFile(self):
+    #    self.OutPut.setText(str(self.OutPut_box.isChecked()))
 
     def total_sulfide(self):
         if self.h2s_box.isChecked() is True:
@@ -502,6 +504,7 @@ class o2Page(QWizardPage):
         para_settings = QGroupBox("Input for O2 analysis")
         grid_load = QGridLayout()
         para_settings.setFont(QFont('Helvetica Neue', 12)), para_settings.setFixedHeight(150)
+        para_settings.setMinimumWidth(600)
         vbox1_left.addWidget(para_settings)
         para_settings.setLayout(grid_load)
 
@@ -616,12 +619,13 @@ class o2Page(QWizardPage):
                 # calibration core by core
                 dO2_core.update(dbs.O2converter4conc(data_shift=self.ddata_shift, lim_min=lim_min, lim=lim,
                                                      o2_dis=self.o2_dis, unit='µmol/L'))
+
                 # results['O2 profile'] = dO2_core
                 for c in dO2_core.keys():
                     for i in dO2_core[c].columns:
                         # get the right columns:
                         for k in results['O2 profile'][c][i[0]].columns:
-                            if 'M' in k:
+                            if 'M' in k or 'mol' in k:
                                 col2sub = k
                         results['O2 profile'][c][i[0]][col2sub] = dO2_core[c][i].dropna().to_numpy()
 
@@ -666,19 +670,36 @@ class o2Page(QWizardPage):
                         self.continue_button.clicked.connect(self.continue_processI)
 
     def load_O2data(self):
-        # load excel sheet with all measurements
-        if self.field("SoftwareFile") == 'True':
-            # raw measurement file pre-processed and saved per default as rawData file
-            dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
+        # convert potential str-list into list of strings
+        if '[' in self.field("Data"):
+            ls_file = [i.strip()[1:-1] for i in self.field("Data")[1:-1].split(',')]
         else:
-            # old version with pre-processed files:
-            dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+            ls_file = list(self.field("Data"))
+
+        # load excel sheet with all measurements
+        ls_dsheets = dict(map(lambda f: (f[0], dbs.loadMeas4GUI(file=f[1])), enumerate(ls_file)))
+        dsheets = ls_dsheets[0]
+        for en in range(len(ls_file)-1):
+            dsheets = merge(dsheets, ls_dsheets[en+1])
+
+        # get the information how the columns for depth, concentration, and signal are labeled for each analyte
+        global dcol_label
+        for a in dsheets.keys():
+            dcol_label[a] = list(dsheets[a].columns[2:])
+
+        # if self.field("SoftwareFile") == 'True':
+        #     # raw measurement file pre-processed and saved per default as rawData file
+        #     dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
+        # else:
+        #     # old version with pre-processed files:
+        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
 
         # pre-check whether O2_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='O2')
 
         #  prepare file depending on the type
         ddata = dsheets[sheet_select].set_index('Nr')
+
         global grp_label
         if grp_label is None:
             grp_label = ddata.columns[0]
@@ -1552,7 +1573,8 @@ def plot_FitUpdate(core, nr, dic_dcore, dfit, dic_deriv, fig, ax, ax1):
     ax.set_xlabel('Depth / µm'), ax.set_ylabel('O2 / mV'), ax1.set_ylabel('1st derivative', color='#0077b6')
 
     # plotting part
-    ax.plot(dic_dcore.index, dic_dcore['O2_mV'], lw=0, marker='o', ms=4, color='k')
+    c = 'O2_mV' if 'O2' in dic_dcore.columns else dic_dcore.columns[0]
+    ax.plot(dic_dcore.index, dic_dcore[c], lw=0, marker='o', ms=4, color='k')
     ax.plot(dfit[dfit.columns[0]], lw=0.75, ls=':', color='k')
 
     ax1.plot(dic_deriv, lw=1., color='#0077b6')
@@ -1560,7 +1582,8 @@ def plot_FitUpdate(core, nr, dic_dcore, dfit, dic_deriv, fig, ax, ax1):
 
     # text annotation to indicate depth correction
     text = 'surface level \nat {:.1f}µm'
-    ax.text(dic_dcore['O2_mV'].index[-1] * 0.6, dic_dcore['O2_mV'].max() * 0.5,
+    c = 'O2_mV' if 'O2' in dic_dcore.columns else dic_dcore.columns[0]
+    ax.text(dic_dcore[c].index[-1] * 0.6, dic_dcore[c].max() * 0.5,
             text.format(dic_deriv.idxmin().values[0]), ha="left", va="center", color='k', size=9.5,
             bbox=dict(fc='lightgrey', alpha=0.25))
 
@@ -1586,14 +1609,16 @@ def GUI_FitDepth(core, nr, dfCore, dfFit, dfDeriv, fig=None, ax=None, ax1=None, 
         ax.set_xlabel('Depth / µm'), ax.set_ylabel('O2 / mV'), ax1.set_ylabel('1st derivative', color='#0077b6')
 
     # plotting part
-    ax.plot(dfCore[nr].index, dfCore[nr]['O2_mV'], lw=0, marker='o', ms=4, color='k')
+    c = 'O2_mV' if 'O2' in dfCore[nr].columns else dfCore[nr].columns[0]
+    ax.plot(dfCore[nr].index, dfCore[nr][c], lw=0, marker='o', ms=4, color='k')
     ax.plot(dfFit[nr][1], lw=0.75, ls=':', color='k')
     ax1.plot(dfDeriv[nr][0], lw=1., color='#0077b6')
     ax1.axvline(dfFit[nr][2], ls='-.', color='darkorange', lw=1.5)
 
     # text annotation for sediment water interface depth correction
     text = 'surface level \nat {:.1f}µm'
-    ax.text(dfCore[nr]['O2_mV'].index[-1] * 0.6, dfCore[nr]['O2_mV'].max() * 0.5, text.format(dfFit[nr][2]), ha="left",
+    c = 'O2_mV' if 'O2' in dfCore[nr].columns else dfCore[nr].columns[0]
+    ax.text(dfCore[nr][c].index[-1] * 0.6, dfCore[nr][c].max() * 0.5, text.format(dfFit[nr][2]), ha="left",
             va="center", color='k', size=9.5, bbox=dict(fc='lightgrey', alpha=0.25))
 
     # general layout
@@ -1917,11 +1942,12 @@ class phPage(QWizardPage):
                 self.continuepH_button.setEnabled(False)# , self.swi_edit.setEnabled(False)
 
     def load_pHdata(self):
-        if self.field("SoftwareFile") == 'True':
-            dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
-        else:
-            # old version with pre-processed files:
-            dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+        dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
+        # if self.field("SoftwareFile") == 'True':
+        #     dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
+        # else:
+        #     # old version with pre-processed files:
+        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
 
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='pH')
@@ -2764,11 +2790,12 @@ class h2sPage(QWizardPage):
             self.continueh2s_button.setEnabled(True), self.swih2s_edit.setEnabled(True)
 
     def load_H2Sdata(self):
-        if self.field("SoftwareFile") == 'True':
-            dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
-        else:
-            # old version with pre-processed files:
-            dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+        dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
+        # if self.field("SoftwareFile") == 'True':
+        #     dsheets = dbs.loadMeas4GUI(file=self.field("Data"))
+        # else:
+        #     # old version with pre-processed files:
+        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
 
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='H2S')
@@ -4159,11 +4186,12 @@ class epPage(QWizardPage):
             print('plot time-drive of all profiles -> ask for which profiles belong together')
 
     def load_EPdata(self):
-        if self.field("SoftwareFile") == 'True':
-            dsheets = dbs._loadFile4GUI(file=self.field("Data"))
-        else:
-            # old version with pre-processed files:
-            dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
+        dsheets = dbs._loadFile4GUI(file=self.field("Data"))
+        # if self.field("SoftwareFile") == 'True':
+        #     dsheets = dbs._loadFile4GUI(file=self.field("Data"))
+        # else:
+        #     # old version with pre-processed files:
+        #     dsheets = pd.read_excel(self.field("Data"), sheet_name=None)
         self.dsheets = dsheets
 
         # pre-check whether EP_all in sheet names
@@ -4943,7 +4971,7 @@ class DriftWindow(QDialog):
         self.setLayout(layoutDC)
 
     def sliderTD_update(self):
-        self.axTD.cla(), self.axCF.cla()
+        self.axTD.cla(), self.axCF.cla(), self.figTD.suptitle('')
         self.msg.setText('Details about the curve fit: \n\n\n\n\n\n')
 
         # update slider position and label
@@ -4982,6 +5010,11 @@ class DriftWindow(QDialog):
         # update profile time-drive
         dfP2_ = [self.dataDC[p[0]][p[1]].sort_index(ascending=True) for p in self.dorder[self.nP]]
         self.axTD.plot(pd.concat(dfP2_, axis=0)['EP_mV'].to_numpy(), color='darkorange', lw=1., label='corrected')
+        nmin = np.min([self.axTD.get_ylim()[0], np.min(pd.concat(dfP2_, axis=0)['EP_mV'].to_numpy())])
+        nmax = np.max([self.axTD.get_ylim()[1], np.max(pd.concat(dfP2_, axis=0)['EP_mV'].to_numpy())])
+
+        self.axTD.set_ylim(nmin, nmax)
+        self.axTD.set_title(''), self.figTD.suptitle('EP drift corrected profile for group {}'.format(self.nP))
         self.figTD.canvas.draw()
 
         # plot fit results
@@ -5279,7 +5312,7 @@ class charPage(QWizardPage):
 
         # connect checkbox and load file button with a function
         self.av_box.clicked.connect(self.nextStep_selection)
-        self.O2stats_box.clicked.connect(self.nextStep_selection)
+        # self.O2stats_box.clicked.connect(self.nextStep_selection)
         self.EPstats_box.clicked.connect(self.nextStep_selection)
         self.jointPlot_box.clicked.connect(self.nextStep_selection)
 
@@ -5292,8 +5325,8 @@ class charPage(QWizardPage):
         self.av_box = QCheckBox('Average depth profiles per core', self)
         self.av_box.setFont(QFont('Helvetica Neue', 12))
 
-        self.O2stats_box = QCheckBox('O2 consumption', self)
-        self.O2stats_box.setFont(QFont('Helvetica Neue', 12))
+        # self.O2stats_box = QCheckBox('O2 consumption', self)
+        # self.O2stats_box.setFont(QFont('Helvetica Neue', 12))
 
         self.EPstats_box = QCheckBox('EP statistics', self)
         self.EPstats_box.setFont(QFont('Helvetica Neue', 12))
@@ -5316,7 +5349,7 @@ class charPage(QWizardPage):
 
         # include widgets in the layout
         grid_set.addWidget(self.av_box, 0, 0)
-        grid_set.addWidget(self.O2stats_box, 1, 0)
+        # grid_set.addWidget(self.O2stats_box, 1, 0)
         grid_set.addWidget(self.EPstats_box, 2, 0)
         grid_set.addWidget(self.jointPlot_box, 3, 0)
 
@@ -5326,8 +5359,8 @@ class charPage(QWizardPage):
         ls_next = list()
         if self.av_box.isChecked() is True:
             ls_next.append('averageLP')
-        if self.O2stats_box.isChecked() is True:
-            ls_next.append('O2 flux')
+        # if self.O2stats_box.isChecked() is True:
+        #    ls_next.append('O2 flux')
         if self.EPstats_box.isChecked() is True:
             ls_next.append('EP stats')
         if self.jointPlot_box.isChecked() is True:
@@ -5346,8 +5379,8 @@ class charPage(QWizardPage):
 class avProfilePage(QWizardPage):
     def __init__(self, parent=None):
         super(avProfilePage, self).__init__(parent)
-        self.setTitle("Average micro-sensor profiles per core")
-        self.setSubTitle("\n")
+        self.setTitle("Average depth profiles")
+        self.setSubTitle("The averaging is done for each anaylte and each core. \n\n\n")
 
     def nextId(self) -> int:
         ls_para = list(self.field('next steps').split(','))
