@@ -2677,6 +2677,13 @@ class h2sPage(QWizardPage):
         self.swih2s_edit.setValidator(QDoubleValidator()), self.swih2s_edit.setAlignment(Qt.AlignRight)
         self.swih2s_edit.setMaximumWidth(100), self.swih2s_edit.setText('--'), self.swih2s_edit.setEnabled(False)
 
+        # define concentration for sulfidic front
+        sFh2s_label, sFh2s_unit_label = QLabel(self), QLabel(self)
+        sFh2s_label.setText('Sulfidic Front: '), sFh2s_unit_label.setText('µmol/L')
+        self.sFh2s_edit = QLineEdit(self)
+        self.sFh2s_edit.setValidator(QDoubleValidator()), self.sFh2s_edit.setAlignment(Qt.AlignRight)
+        self.sFh2s_edit.setMaximumWidth(100), self.sFh2s_edit.setText('10'), self.sFh2s_edit.setEnabled(False)
+
         # # option to select the SWI (baseline) from the O2 calculations in case O2 was selected
         # self.swih2s_box = QCheckBox('SWI from O2 analysis', self)
         # self.swih2s_box.setFont(QFont('Helvetica Neue', fs_font))
@@ -2729,12 +2736,15 @@ class h2sPage(QWizardPage):
         grid_load.addWidget(swih2s_label, 2, 0)
         grid_load.addWidget(self.swih2s_edit, 2, 1)
         grid_load.addWidget(swih2s_unit_label, 2, 2)
-        # grid_load.addWidget(self.swih2s_box, 2, 3)
         grid_load.addWidget(self.updateh2s_button, 2, 3)
-        grid_load.addWidget(self.continueh2s_button, 3, 0)
-        grid_load.addWidget(self.adjusth2s_button, 3, 1)
-        grid_load.addWidget(self.reseth2s_button, 3, 2)
-        grid_load.addWidget(self.saveh2s_button, 3, 3)
+        grid_load.addWidget(sFh2s_label, 3, 0)
+        grid_load.addWidget(self.sFh2s_edit, 3, 1)
+        grid_load.addWidget(sFh2s_unit_label, 3, 2)
+        # grid_load.addWidget(self.swih2s_box, 2, 3)
+        grid_load.addWidget(self.continueh2s_button, 4, 0)
+        grid_load.addWidget(self.adjusth2s_button, 4, 1)
+        grid_load.addWidget(self.reseth2s_button, 4, 2)
+        grid_load.addWidget(self.saveh2s_button, 4, 3)
 
         # draw additional "line" to separate parameters from plots and to separate navigation from rest
         vline = QFrame()
@@ -2751,7 +2761,7 @@ class h2sPage(QWizardPage):
         sns.despine()
 
         H2S_group = QGroupBox("H2S depth profile")
-        H2S_group.setMinimumHeight(300)
+        H2S_group.setMinimumHeight(300), H2S_group.setMinimumWidth(550)
         grid_H2S = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -2770,6 +2780,15 @@ class h2sPage(QWizardPage):
         # raw measurement file pre-processed and saved per default as rawData file
         dsheets = _loadGlobData(file_str=self.field("Data"))
 
+        # pre-check whether pH_all in sheet names
+        sheet_select = dbs.sheetname_check(dsheets, para='H2S')
+
+        #  prepare file depending on the type
+        ddata = dsheets[sheet_select].set_index('Nr')
+        global grp_label
+        if grp_label is None:
+            grp_label = ddata.columns[0]
+
         # list all available cores for pH sheet
         self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]].to_numpy()))
 
@@ -2787,6 +2806,93 @@ class h2sPage(QWizardPage):
                                     columns=results['H2S adjusted'][c][i].columns)
                 ddic[i] = df_i
             results['H2S profile raw data'][c] = ddic
+
+    def load_additionalInfo(self):
+        # convert potential str-list into list of strings
+        if '[' in self.field("Data"):
+            ls_file = [i.strip()[1:-1] for i in self.field("Data")[1:-1].split(',')]
+        else:
+            ls_file = list(self.field("Data"))
+
+        # load excel sheet with all measurements
+        dic_sheets = dict()
+        for f in enumerate(ls_file):
+            dic_sheets_ = pd.read_excel(f[1], sheet_name=None)
+            # get the metadata and correlation sheets
+            df_meta, df_correl = None, None
+            for c in dic_sheets_.keys():
+                if 'Meta' in c or 'meta' in c:
+                    df_meta = dic_sheets_[c]
+                if 'Corr' in c or 'corr' in c:
+                    df_correl = dic_sheets_[c]
+            dic_sheets[f[0]] = dict({'meta data': df_meta, 'pH - H2S correlation': df_correl})
+
+        # merge and double check duplicates (especially for pH-H2S correlation)
+        dsheets_add = dic_sheets[0]
+        for en in range(len(ls_file) - 1):
+            # get meta data info
+            if 'meta data' in dic_sheets[en + 1].keys():
+                dfmeta_sum = pd.concat([dsheets_add['meta data'], dic_sheets[en + 1]['meta data']], axis=0)
+            else:
+                dfmeta_sum = dsheets_add['meta data']
+
+            # get correlation info
+            if 'pH - H2S correlation' in dic_sheets[en + 1].keys():
+                key = 'pH - H2S correlation'
+                dfcorrel_sum = self.correlationInfo(en=en, key=key, dsheets_add=dsheets_add, dic_sheets=dic_sheets)
+
+            else:
+                dfcorrel_sum = dsheets_add['pH - H2S correlation']
+            dsheets_add = dict({'meta data': dfmeta_sum, 'pH - H2S correlation': dfcorrel_sum})
+        return dsheets_add
+
+    def correlationInfo(self, dsheets_add, dic_sheets, en, key):
+        df1, df2 = dsheets_add[key], dic_sheets[en + 1][key]
+        if len(df1) == 0 and len(df2) !=0:
+            dfcorrel_sum = df2
+        elif len(df1) != 0 and len(df2) == 0:
+            dfcorrel_sum = df1
+        else:
+            if df1.merge(df2).drop_duplicates().shape == df1.drop_duplicates().shape is True:
+                # dataframe with same shape -> check whether they have the same content
+                if ((dsheets_add[key] == dic_sheets[en + 1][key]).all().all()) is True:
+                    # dataframe matches - no need to do anything
+                    dfcorrel_sum = dsheets_add['pH - H2S correlation']
+                else:
+                    df_mima = dsheets_add[key].ne(dic_sheets[en + 1][key], axis=1).dot(dsheets_add[key].columns)
+                    for index, value in df_mima.items():
+                        if value:
+                            msgBox = QMessageBox()
+                            msgBox.setIcon(QMessageBox.Information)
+                            msgBox.setText("The excel sheets contain mismatching information for pH-H2S correlation. "
+                                           "Please check column {} in line {}".format(value, index))
+                            msgBox.setFont(QFont('Helvetica Neue', 11))
+                            msgBox.setWindowTitle("Warning")
+                            msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+
+                            returnValue = msgBox.exec()
+                            if returnValue == QMessageBox.Ok:
+                                pass
+
+                    dfcorrel_sum = dsheets_add['pH - H2S correlation']
+            else:
+                df_mima = dsheets_add[key].ne(dic_sheets[en + 1][key], axis=1).dot(dsheets_add[key].columns)
+                for index, value in df_mima.items():
+                    if value:
+                        msgBox = QMessageBox()
+                        msgBox.setIcon(QMessageBox.Information)
+                        msgBox.setText("The excel sheets contain mismatching information for pH-H2S correlation.  Please "
+                                       "check column {} in line {}".format(value, index))
+                        msgBox.setFont(QFont('Helvetica Neue', 11))
+                        msgBox.setWindowTitle("Warning")
+                        msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+
+                        returnValue = msgBox.exec()
+                        if returnValue == QMessageBox.Ok:
+                            pass
+
+                dfcorrel_sum = dsheets_add['pH - H2S correlation']
+        return dfcorrel_sum
 
     def conductivity_converter(self):
         # open dialog window for conductivity -> salinity conversion
@@ -2844,9 +2950,11 @@ class h2sPage(QWizardPage):
         # decide to which direction the code shall continue
         if 'pH profile raw data' in results.keys():
             # get information about correlation pH to H2S + pre-check if the excel file contains a correlation sheet
-            ddata_all = pd.read_excel(self.field("Data"), sheet_name=None)
-            df_correl = self.precheck_totalSulfide(ddata_all)
-            results['pH - H2S correlation'] = df_correl
+            dsheets_add = self.load_additionalInfo()
+
+            # ddata_all = pd.read_excel(self.field("Data"), sheet_name=None)
+            # df_correl = self.precheck_totalSulfide(ddata_all)
+            results['pH - H2S correlation'] = dsheets_add['pH - H2S correlation']
 
             # calculation of total sulfide possible
             self.continueh2s_button.clicked.connect(self.continue_H2SIIa)
@@ -2856,28 +2964,49 @@ class h2sPage(QWizardPage):
 
     def getOriginal_pH(self, corepH, sample):
         if 'pH swi depth' in results.keys():
-            if corepH in results['pH swi depth'].keys():
-                if isinstance(results['pH swi depth'][corepH], float):
-                    corr = results['pH swi depth'][corepH]
+            corepH1 = _findCoreLabel(option1=corepH, option2=int(corepH.split(' ')[1]), ls=results['pH swi depth'].keys())
+            print(corepH1)
+            if corepH1:
+                if isinstance(results['pH swi depth'][corepH1], float):
+                    corr = results['pH swi depth'][corepH1]
                 else:
-                    corr = results['pH swi depth'][corepH]['Depth (µm)']
+                    corr = results['pH swi depth'][corepH1]['Depth (µm)']
             else:
                 corr = 0.
-            xold = results['pH adjusted'][corepH][sample].index + corr
-            pH_coreS = pd.DataFrame(results['pH adjusted'][corepH][sample]['pH'])
+                corepH1 = _findCoreLabel(option1=corepH, option2=int(corepH.split(' ')[1]), ls=results['pH adjusted'])
+            xold = results['pH adjusted'][corepH1][sample].index + corr
+            pH_coreS = pd.DataFrame(results['pH adjusted'][corepH1][sample]['pH'])
             pH_coreS.index = xold
+            # elif int(corepH.split(' ')[1]) in results['pH swi depth'].keys():
+            #     if isinstance(results['pH swi depth'][int(corepH.split(' ')[1])], float):
+            #         corr = results['pH swi depth'][int(corepH.split(' ')[1])]
+            #     else:
+            #         corr = results['pH swi depth'][int(corepH.split(' ')[1])]['Depth (µm)']
+            # else:
+            #     corr = 0.
+            # if corepH:
+            #     in results['pH adjusted'].keys():
+            #     labCore = corepH
+            # elif int(corepH.split(' ')[1]) in results['pH adjusted'].keys():
+            #     labCore = int(corepH.split(' ')[1])
         else:
-            pH_coreS = results['pH adjusted'][corepH][sample]['pH']
+            corepH = _findCoreLabel(option1=corepH, option2=int(corepH.split(' ')[1]), ls=results['pH adjusted'])
+            if corepH:
+                pH_coreS = results['pH adjusted'][corepH][sample]['pH']
+            else:
+                pH_coreS = None
         return pH_coreS
 
     def _calcTotalSulfide(self, tempK, sal_pmill, coreh2s, sampleS, pH_coreS):
+        coreh2s = int(coreh2s.split(' ')[1])
+
         # pK1 equation
         pK1 = -98.08 + (5765.4/tempK) + 15.04555*np.log(tempK) + -0.157*(sal_pmill**0.5) + 0.0135*sal_pmill
         K1 = 10**(-pK1)
 
         # get appropriate column of H2S
         for c in self.dH2S_core[coreh2s][sampleS].columns:
-            if 'M' in c:
+            if 'M' in c or 'mol' in c:
                 col = c
         d_H2S = self.dH2S_core[coreh2s][sampleS][col] if col else self.dH2S_core[coreh2s][sampleS]
 
@@ -2904,6 +3033,8 @@ class h2sPage(QWizardPage):
         d_H2S_crop = d_H2S.loc[depth_interpol[0]:depth_interpol[-1]]
         df_combo.loc[d_pH_crop.index, 'pH'] = d_pH_crop[col_pH].to_numpy()
         df_combo.loc[d_H2S_crop.index, 'H2S'] = d_H2S_crop[col_H2S].to_numpy()
+        for col in df_combo:
+            df_combo[col] = pd.to_numeric(df_combo[col], errors='coerce')
 
         # interpolate(method='linear')
         self.df_interpol = df_combo.interpolate(method='linear').dropna()
@@ -2951,17 +3082,17 @@ class h2sPage(QWizardPage):
 
         # get all cores of H2S profiles
         ls_coreH2S = list()
-        [ls_coreH2S.append(l) for l in df_corr['H2S core'].to_numpy() if l not in ls_coreH2S]
+        [ls_coreH2S.append(l) for l in df_corr['H2S code'].to_numpy() if l not in ls_coreH2S]
 
         # calculate total sulfide
         dsulfide, n = dict(), 0
         for em, coreh2s in enumerate(ls_coreH2S):
             # get all samples of the specific core
-            samplesh2S = df_corr[df_corr['H2S core'] == coreh2s]['H2S Nr'].to_numpy()
+            samplesh2S = df_corr[df_corr['H2S code'] == coreh2s]['H2S Nr'].to_numpy()
             dsulfideS = dict()
             for en, s in enumerate(samplesh2S):
                 # get the original pH profile
-                pH_coreS = self.getOriginal_pH(corepH=df_corr.loc[n]['pH core'], sample=df_corr.loc[n]['pH Nr'])
+                pH_coreS = self.getOriginal_pH(corepH=df_corr.loc[n]['pH code'], sample=df_corr.loc[n]['pH Nr'])
 
                 # calculate total sulfide for specific core and sample according to associated pH profile
                 df = self._calcTotalSulfide(coreh2s=coreh2s, sampleS=s, tempK=tempK, sal_pmill=sal_pmill,
@@ -2994,6 +3125,7 @@ class h2sPage(QWizardPage):
             dscale[c] = pd.DataFrame((np.min(l), np.max(l)))
         self.scaleS0 = (pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
         self.col2 = para
+
         # update column name that shall be plotted
         te = True if core_select in scaleh2s.keys() else False
         figH2S0 = plot_H2SProfile(data_H2S=dsulfide, core=core_select, ls_core=self.ls_core, scale=self.scaleS0, ls='-',
@@ -3439,6 +3571,7 @@ class AdjustpHWindowS(QDialog):
         self.Core = min(self.ls_core, key=lambda x: abs(x - sliderValue))
 
         # plot all samples from current core
+        self.Core = _findCoreLabel(option1=self.Core, option2='core ' +str(self.Core), ls=self.dic_H2S)
         h2s_nr = min(self.dic_H2S[self.Core].keys())
         if self.df_correl is None:
             pH_sample = None
@@ -3544,7 +3677,7 @@ class AdjustpHWindowS(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        plotGp.setMinimumHeight(300)
+        plotGp.setMinimumHeight(450)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
         plotGp.setLayout(gridFig)
@@ -3798,9 +3931,15 @@ def plot_H2SProfile(data_H2S, core, ls_core, col, dobj_hidH2S, ls='-.', scale=No
     lines = list()
     # identify closest value in list and the plotted analyte
     core_select = dbs.closest_core(ls_core=ls_core, core=core)
+    if core_select in data_H2S.keys():
+        s0 = list(data_H2S[core_select].keys())[0]
+        labCore = core_select
+    else:
+        # 'core ' + str(core_select) in data_H2S.keys():
+        s0 = list(data_H2S['core ' + str(core_select)].keys())[0]
+        labCore = 'core ' + str(core_select)
 
-    s0 = list(data_H2S[core_select].keys())[0]
-    para = 'total sulfide zero corr_µmol/L' if 'total sulfide zero corr_µmol/L' in data_H2S[core_select][s0].columns else col
+    para = 'total sulfide zero corr_µmol/L' if 'total sulfide zero corr_µmol/L' in data_H2S[labCore][s0].columns else col
     unit = col.split('_')[1]
 
     # initialize figure
@@ -3817,7 +3956,7 @@ def plot_H2SProfile(data_H2S, core, ls_core, col, dobj_hidH2S, ls='-.', scale=No
         ax.axhline(0, lw=.5, color='k')
 
         # additional warning
-        if len(data_H2S[core_select].keys()) >= len(ls_col):
+        if len(data_H2S[labCore].keys()) >= len(ls_col):
             msgBox = QMessageBox()
             msgBox.setIcon(QMessageBox.Warning)
             msgBox.setText("Number of samples exceeds number of available colors to visualize in the same plot. "
@@ -3826,12 +3965,12 @@ def plot_H2SProfile(data_H2S, core, ls_core, col, dobj_hidH2S, ls='-.', scale=No
             msgBox.setWindowTitle("Warning")
             msgBox.setStandardButtons(QMessageBox.Ok)
 
-        for en, nr in enumerate(data_H2S[core_select].keys()):
-            if dobj_hidH2S and core_select in dobj_hidH2S.keys():
-                alpha_ = .0 if 'sample ' + str(nr) in dobj_hidH2S[core_select] else .6
+        for en, nr in enumerate(data_H2S[labCore].keys()):
+            if dobj_hidH2S and labCore in dobj_hidH2S.keys():
+                alpha_ = .0 if 'sample ' + str(nr) in dobj_hidH2S[labCore] else .6
             else:
                 alpha_ = .6
-            df = data_H2S[core_select][nr][para].dropna()
+            df = data_H2S[labCore][nr][para].dropna()
             mark = '.' if ls == '-.' else None
             lw = .75 if ls == '-.' else 1.
             if en <= len(ls_col):
@@ -3849,7 +3988,7 @@ def plot_H2SProfile(data_H2S, core, ls_core, col, dobj_hidH2S, ls='-.', scale=No
 
         # picker - hid curves in plot
         def onpick(event):
-            ls_hid = dobj_hidH2S[core_select] if core_select in dobj_hidH2S.keys() else list()
+            ls_hid = dobj_hidH2S[labCore] if labCore in dobj_hidH2S.keys() else list()
             ls_hid = list(dict.fromkeys(ls_hid))
 
             # on the pick event, find the orig line corresponding to the legend proxy line, and toggle the visibility
@@ -3947,6 +4086,8 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pHnr, fig, ax, ax1
         else:
             corr = 0
         # correlated pH sample Nr.
+        if isinstance(core, str):
+            core = _findCoreLabel(option1=core, option2=int(core.split(' ')[1]), ls=results['pH profile raw data'].keys())
         ax1.plot(results['pH profile raw data'][core][pHnr]['pH'], results['pH profile raw data'][core][pHnr].index+corr,
                  lw=0.75, ls='--', color='#971EB3', alpha=0.75)
 
@@ -3996,6 +4137,8 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, fig=Non
 
     if pH:
         # correlated pH sample Nr. - use the corrected profiles
+        if isinstance(core, str):
+            core = _findCoreLabel(option1=core, option2=int(core.split(' ')[1]), ls=results['pH adjusted'].keys())
         ax1.plot(results['pH adjusted'][core][pHnr]['pH'], results['pH adjusted'][core][pHnr].index, lw=0.75, ls='--',
                  color='#971EB3', alpha=0.75)
 
@@ -4019,6 +4162,10 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, fig=Non
 def plot_sulfidicFront(df_Front, core_select, fig, ax):
     # add average + std to the plot
     if core_select != 0:
+        if isinstance(core_select, str):
+            core_select = _findCoreLabel(option1=core_select, option2=int(core_select.split(' ')[1]), ls=df_Front.keys())
+        else:
+            core_select = _findCoreLabel(option1=core_select, option2='core ' + str(core_select), ls=df_Front.keys())
         mean_ = df_Front[core_select].loc['mean'].to_numpy()[0]
         std_ = df_Front[core_select].loc['std'].to_numpy()[0]
 
@@ -5551,7 +5698,6 @@ class SalConvWindowO2(QDialog):
 
 
 # --------------------------------------------------------------
-# functions for all
 def _loadGlobData(file_str):
     # convert potential str-list into list of strings
     if '[' in file_str:
@@ -5572,6 +5718,15 @@ def _loadGlobData(file_str):
             dcol_label[a] = list(dsheets[a].columns[2:])
     return dsheets
 
+
+def _findCoreLabel(option1, option2, ls):
+    if option1 in ls:
+        labCore = option1
+    elif option2 in ls:
+        labCore = option2
+    else:
+        labCore = None
+    return labCore
 
 # ---------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':

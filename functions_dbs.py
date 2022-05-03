@@ -497,11 +497,16 @@ def splitIntoSamples(dprof, df_meta):
     dprofiles = dict()
     # split full dataset into individual profiles and label them according to sample ID and group (e.g. "core")
     for par in dprof.keys():
-        label_par = 'O2_all' if 'Oxygen' in par or 'oxygen' in par else par + '_all'
+        if 'Oxygen' in par or 'oxygen' in par:
+            label_par = 'O2_all'
+        elif 'Redox' in par or 'ep' in par or 'Ep' in par or 'redox' in par:
+            label_par = 'EP_all'
+        else:
+            label_par = par + '_all'
+
         # prepare label for all eventualities
         if 'Sensor' in label_par:
             label_par = label_par.split(' ')[-1]
-            print(504, label_par)
 
         # metadata sheet
         ls_empty = list()
@@ -983,10 +988,13 @@ def save_hdf5(dtab_sal, fname):
 
 # --------------------------------------------------------------------------------------------------------------------
 def closest_core(ls_core, core):
-    if core == 0 or not ls_core:
-        core_select = 0
+    if isinstance(core, str):
+        core_select = core
     else:
-        core_select = min(ls_core, key=lambda x: abs(x - core))
+        if core == 0 or not ls_core:
+            core_select = 0
+        else:
+            core_select = min(ls_core, key=lambda x: abs(x - core))
     return core_select
 
 
