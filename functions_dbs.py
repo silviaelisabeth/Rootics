@@ -958,6 +958,10 @@ def _actualFileName(savePath, file=None, clabel='output', rlabel='run'):
         savename = savePath + '/' + addstr + file.split('/')[-1]
     else:
         savename = savePath + '/' + addstr
+
+    # compatibility mode
+    if savename.split('.')[1] != 'xlsx':
+        savename = savename.split('.')[0] + '.xlsx'
     return savename
 
 
@@ -1457,23 +1461,26 @@ def curveFitPack(dfP_, numP, nP, dorder, resultsEP, fit_select='2nd order polyno
     xnew = np.linspace(0, xdata[-1], num=int(xdata[-1] / 0.2 + 1))
     if len(ydata) > 2 and fit_select == '2nd order polynomial fit':
         arg = np.polyfit(x=xdata, y=ydata, deg=2)
-        c = arg[2]
+        c, t = arg[2], arg[-1]
         df_reg = pd.DataFrame(arg[0] * (xnew ** 2) + arg[1] * xnew + arg[2], index=xnew, columns=['EP_reg'])
     elif len(ydata) <= 2 or fit_select == 'linear regression':
         arg = stats.linregress(x=xdata, y=ydata)
-        c = arg[1]
+        c, t = arg[1], arg[1]
         df_reg = pd.DataFrame(arg[0] * xnew + arg[1], index=xnew, columns=['EP_reg'])
     else:
-        arg, c = [np.nan], 0
+        arg, c, t = [np.nan], 0, 0
         df_reg = pd.DataFrame([np.nan] * xnew, index=xnew, columns=['EP_reg'])
 
     # determine goodness of fit
     chi_squared = np.sum((np.polyval(arg, xdata) - ydata) ** 2)
 
     # actual correction of all profiles part of the package | target value - actual value
-    corr_f = [c - ydata[n] - arg[-1] for n in range(len(xdata))]
+    corr_f = [c - ydata[n] - t for n in range(len(xdata))]
     for en, r in enumerate(dorder[nP]):
         c, s = r
-        resultsEP[c][s] = pd.concat([dfP_[en]['Core'], dfP_[en]['EP_mV'] + corr_f[en]], axis=1)
+        for col_ in dfP_[en].columns:
+            if 'mV' not in col_:
+                col = col_
+        resultsEP[c][s] = pd.concat([dfP_[en][col], dfP_[en]['EP_mV'] + corr_f[en]], axis=1)
 
     return ydata, df_reg, chi_squared, arg, corr_f
