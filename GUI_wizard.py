@@ -560,7 +560,7 @@ class o2Page(QWizardPage):
     def conductivity_converterO2(self):
         # open dialog window for conductivity -> salinity conversion
         global wConv
-        wConv = SalConvWindowO2(float(self.temperature_edit.text()), self.salinity_edit)
+        wConv = SalConvWindowO2(self.temperature_edit, self.salinity_edit)
         if wConv.isVisible():
             pass
         else:
@@ -675,15 +675,20 @@ class o2Page(QWizardPage):
 
         # pre-check whether O2_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='O2')
+        checked = checkDatavsPara(sheet_select, par='O2')
 
-        #  prepare file depending on the type
-        ddata = dsheets[sheet_select].set_index('Nr')
+        if checked is True:
+            #  prepare file depending on the type
+            ddata = dsheets[sheet_select].set_index('Nr')
 
-        global grp_label
-        if grp_label is None:
-            grp_label = ddata.columns[0]
-
-        return ddata, sheet_select
+            global grp_label
+            if grp_label is None:
+                grp_label = ddata.columns[0]
+        else:
+            # reset page as nothing was found
+            self.reset_o2page()
+            return None, None
+        return ddata, sheet_select, checked
 
     def continue_process(self):
         # store relevant information
@@ -698,24 +703,25 @@ class o2Page(QWizardPage):
             self.setSubTitle("The analysis starts with the correction of the surface-water interface (SWI).  If the "
                              "correction looks good,  press CONTINUE.  Otherwise,  press CHECK FIT for adjustments. \n")
             # load data from excel sheet depending on the type (measurement file or prepared file)
-            ddata, sheet_select = self.load_O2data()
+            ddata, sheet_select, checked = self.load_O2data()
 
-            # sigmoidal fit
-            [self.ls_core, self.ls_colname, self.gmod, self.dic_dcore,
-             self.dic_deriv, self.dfit] = self.sigmoidalFit(ddata=ddata, sheet_select=sheet_select)
+            if checked is True:
+                # sigmoidal fit
+                [self.ls_core, self.ls_colname, self.gmod, self.dic_dcore,
+                 self.dic_deriv, self.dfit] = self.sigmoidalFit(ddata=ddata, sheet_select=sheet_select)
 
-            # update group label
-            self.sld_label.setText('{}: {}'.format(self.ls_colname[0], min(self.ls_core)))
+                # update group label
+                self.sld_label.setText('{}: {}'.format(self.ls_colname[0], min(self.ls_core)))
 
-            # baseline shift
-            self.baselineShift()
+                # baseline shift
+                self.baselineShift()
 
-            # enable button to click and investigate the derivative / fit
-            self.checkFit_button.setEnabled(True)
-            self.checkFit_button.clicked.connect(self.checkFitWindow)
+                # enable button to click and investigate the derivative / fit
+                self.checkFit_button.setEnabled(True)
+                self.checkFit_button.clicked.connect(self.checkFitWindow)
 
-            # enable next step in O2 analysis
-            self.count += 1
+                # enable next step in O2 analysis
+                self.count += 1
 
         elif self.count == 1:
             # update subtitle for progress report
@@ -1926,20 +1932,26 @@ class phPage(QWizardPage):
 
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='pH')
+        checked = checkDatavsPara(sheet_select, par='pH')
 
-        #  prepare file depending on the type
-        ddata = dsheets[sheet_select].set_index('Nr')
-        global grp_label
-        if grp_label is None:
-            grp_label = ddata.columns[0]
+        if checked is True:
+            #  prepare file depending on the type
+            ddata = dsheets[sheet_select].set_index('Nr')
+            global grp_label
+            if grp_label is None:
+                grp_label = ddata.columns[0]
 
-        # list all available cores for pH sheet
-        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
+            # list all available cores for pH sheet
+            self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
 
-        # import all measurements for given parameter
-        [dpH_core, ls_nr,
-         self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
-        results['pH profile raw data'], results['pH adjusted'] = dpH_core, dpH_core.copy()
+            # import all measurements for given parameter
+            [dpH_core, ls_nr,
+             self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
+            results['pH profile raw data'], results['pH adjusted'] = dpH_core, dpH_core.copy()
+        else:
+            # reset page as nothing was found
+            self.reset_pHpage()
+        return checked
 
     def continue_pH(self):
         self.setSubTitle("Now,  the SWI can be set.  Either choose the depth determined in the O2 project,  or set "
@@ -1949,32 +1961,33 @@ class phPage(QWizardPage):
         self.status_pH = 0
 
         # load data
-        self.load_pHdata()
+        checked = self.load_pHdata()
 
-        # adjust all the core plots to the same x-scale
-        dic_raw = results['pH profile raw data']
-        dfpH_scale = pd.concat([pd.DataFrame([(dic_raw[c][n]['pH'].min(), dic_raw[c][n]['pH'].max())
-                                              for n in dic_raw[c].keys()]) for c in dic_raw.keys()])
-        self.scale0 = dfpH_scale[0].min(), dfpH_scale[1].max()
-        self.scale = self.scale0
-        # plot the pH profile for the first core
-        figpH0 = plot_pHProfile(data_pH=dic_raw, core=min(self.ls_core), ls_core=self.ls_core, scale=self.scale,
-                                fig=self.figpH, ax=self.axpH)
-        self.figpH.canvas.draw()
+        if checked is True:
+            # adjust all the core plots to the same x-scale
+            dic_raw = results['pH profile raw data']
+            dfpH_scale = pd.concat([pd.DataFrame([(dic_raw[c][n]['pH'].min(), dic_raw[c][n]['pH'].max())
+                                                  for n in dic_raw[c].keys()]) for c in dic_raw.keys()])
+            self.scale0 = dfpH_scale[0].min(), dfpH_scale[1].max()
+            self.scale = self.scale0
+            # plot the pH profile for the first core
+            figpH0 = plot_pHProfile(data_pH=dic_raw, core=min(self.ls_core), ls_core=self.ls_core, scale=self.scale,
+                                    fig=self.figpH, ax=self.axpH)
+            self.figpH.canvas.draw()
 
-        # slider initialized to first core
-        self.sliderpH.setMinimum(int(min(self.ls_core))), self.sliderpH.setMaximum(int(max(self.ls_core)))
-        self.sliderpH.setValue(int(min(self.ls_core)))
-        self.sldpH_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
+            # slider initialized to first core
+            self.sliderpH.setMinimum(int(min(self.ls_core))), self.sliderpH.setMaximum(int(max(self.ls_core)))
+            self.sliderpH.setValue(int(min(self.ls_core)))
+            self.sldpH_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
-        # when slider value change (on click), return new value and update figure plot
-        self.sliderpH.valueChanged.connect(self.sliderpH_update)
+            # when slider value change (on click), return new value and update figure plot
+            self.sliderpH.valueChanged.connect(self.sliderpH_update)
 
-        # update continue button to "update" in case the swi shall be updated
-        self.swi_edit.setEnabled(True), self.updatepH_button.setEnabled(True)
-        self.adjustpH_button.setEnabled(True)
-        self.continuepH_button.disconnect()
-        self.continuepH_button.clicked.connect(self.continue_pHII)
+            # update continue button to "update" in case the swi shall be updated
+            self.swi_edit.setEnabled(True), self.updatepH_button.setEnabled(True)
+            self.adjustpH_button.setEnabled(True)
+            self.continuepH_button.disconnect()
+            self.continuepH_button.clicked.connect(self.continue_pHII)
 
     def continue_pHII(self):
         # update status for process control
@@ -2778,30 +2791,35 @@ class h2sPage(QWizardPage):
 
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='H2S')
+        checked = checkDatavsPara(sheet_select, par='H2S')
 
-        #  prepare file depending on the type
-        ddata = dsheets[sheet_select].set_index('Nr')
-        global grp_label
-        if grp_label is None:
-            grp_label = ddata.columns[0]
+        if checked is True:
+            #  prepare file depending on the type
+            ddata = dsheets[sheet_select].set_index('Nr')
+            global grp_label
+            if grp_label is None:
+                grp_label = ddata.columns[0]
 
-        # list all available cores for pH sheet
-        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]].to_numpy()))
+            # list all available cores for pH sheet
+            self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]].to_numpy()))
 
-        # import all measurements for given parameter
-        [self.dH2S_core, ls_nr,
-         self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
-        results['H2S adjusted'] = self.dH2S_core
+            # import all measurements for given parameter
+            [self.dH2S_core, ls_nr,
+             self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
+            results['H2S adjusted'] = self.dH2S_core
 
-        # separate storage of raw data
-        results['H2S profile raw data'] = dict()
-        for c in results['H2S adjusted'].keys():
-            ddic = dict()
-            for i in results['H2S adjusted'][c].keys():
-                df_i = pd.DataFrame(np.array(results['H2S adjusted'][c][i]), index=results['H2S adjusted'][c][i].index,
-                                    columns=results['H2S adjusted'][c][i].columns)
-                ddic[i] = df_i
-            results['H2S profile raw data'][c] = ddic
+            # separate storage of raw data
+            results['H2S profile raw data'] = dict()
+            for c in results['H2S adjusted'].keys():
+                ddic = dict()
+                for i in results['H2S adjusted'][c].keys():
+                    df_i = pd.DataFrame(np.array(results['H2S adjusted'][c][i]), index=results['H2S adjusted'][c][i].index,
+                                        columns=results['H2S adjusted'][c][i].columns)
+                    ddic[i] = df_i
+                results['H2S profile raw data'][c] = ddic
+        else:
+            self.reset_H2Spage()
+        return checked
 
     def load_additionalInfo(self):
         # convert potential str-list into list of strings
@@ -2844,24 +2862,46 @@ class h2sPage(QWizardPage):
 
     def correlationInfo(self, dsheets_add, dic_sheets, en, key):
         df1, df2 = dsheets_add[key], dic_sheets[en + 1][key]
-        if len(df1) == 0 and len(df2) !=0:
+        if df1 is None:
             dfcorrel_sum = df2
-        elif len(df1) != 0 and len(df2) == 0:
+        elif df2 is None:
             dfcorrel_sum = df1
         else:
-            if df1.merge(df2).drop_duplicates().shape == df1.drop_duplicates().shape is True:
-                # dataframe with same shape -> check whether they have the same content
-                if ((dsheets_add[key] == dic_sheets[en + 1][key]).all().all()) is True:
-                    # dataframe matches - no need to do anything
-                    dfcorrel_sum = dsheets_add['pH - H2S correlation']
+            if len(df1) == 0 and len(df2) !=0:
+                dfcorrel_sum = df2
+            elif len(df1) != 0 and len(df2) == 0:
+                dfcorrel_sum = df1
+            else:
+                if df1.merge(df2).drop_duplicates().shape == df1.drop_duplicates().shape is True:
+                    # dataframe with same shape -> check whether they have the same content
+                    if ((dsheets_add[key] == dic_sheets[en + 1][key]).all().all()) is True:
+                        # dataframe matches - no need to do anything
+                        dfcorrel_sum = dsheets_add['pH - H2S correlation']
+                    else:
+                        df_mima = dsheets_add[key].ne(dic_sheets[en + 1][key], axis=1).dot(dsheets_add[key].columns)
+                        for index, value in df_mima.items():
+                            if value:
+                                msgBox = QMessageBox()
+                                msgBox.setIcon(QMessageBox.Information)
+                                msgBox.setText("The excel sheets contain mismatching information for pH-H2S correlation. "
+                                               "Please check column {} in line {}".format(value, index))
+                                msgBox.setFont(QFont('Helvetica Neue', 11))
+                                msgBox.setWindowTitle("Warning")
+                                msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+
+                                returnValue = msgBox.exec()
+                                if returnValue == QMessageBox.Ok:
+                                    pass
+
+                        dfcorrel_sum = dsheets_add['pH - H2S correlation']
                 else:
                     df_mima = dsheets_add[key].ne(dic_sheets[en + 1][key], axis=1).dot(dsheets_add[key].columns)
                     for index, value in df_mima.items():
                         if value:
                             msgBox = QMessageBox()
                             msgBox.setIcon(QMessageBox.Information)
-                            msgBox.setText("The excel sheets contain mismatching information for pH-H2S correlation. "
-                                           "Please check column {} in line {}".format(value, index))
+                            msgBox.setText("The excel sheets contain mismatching information for pH-H2S correlation.  Please "
+                                           "check column {} in line {}".format(value, index))
                             msgBox.setFont(QFont('Helvetica Neue', 11))
                             msgBox.setWindowTitle("Warning")
                             msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
@@ -2871,29 +2911,12 @@ class h2sPage(QWizardPage):
                                 pass
 
                     dfcorrel_sum = dsheets_add['pH - H2S correlation']
-            else:
-                df_mima = dsheets_add[key].ne(dic_sheets[en + 1][key], axis=1).dot(dsheets_add[key].columns)
-                for index, value in df_mima.items():
-                    if value:
-                        msgBox = QMessageBox()
-                        msgBox.setIcon(QMessageBox.Information)
-                        msgBox.setText("The excel sheets contain mismatching information for pH-H2S correlation.  Please "
-                                       "check column {} in line {}".format(value, index))
-                        msgBox.setFont(QFont('Helvetica Neue', 11))
-                        msgBox.setWindowTitle("Warning")
-                        msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-
-                        returnValue = msgBox.exec()
-                        if returnValue == QMessageBox.Ok:
-                            pass
-
-                dfcorrel_sum = dsheets_add['pH - H2S correlation']
         return dfcorrel_sum
 
     def conductivity_converter(self):
         # open dialog window for conductivity -> salinity conversion
         global wConv
-        wConv = SalConvWindowO2(float(self.tempC_edit.text()), self.sal_edit)
+        wConv = SalConvWindowO2(self.tempC_edit, self.sal_edit)
         if wConv.isVisible():
             pass
         else:
@@ -2913,52 +2936,54 @@ class h2sPage(QWizardPage):
                              " and update the profile by clicking the update button.\n")
 
         # load data - mV and µM
-        self.load_H2Sdata()
+        checked = self.load_H2Sdata()
 
-        # adjust all the core plots to the same x-scale (uncalibrated)
-        c = list(self.dH2S_core.keys())[0]
-        nr = list(self.dH2S_core[c].keys())[0]
-        # columns: Core, H2S_mV
-        self.colH2S = self.dH2S_core[c][nr].columns[1]
-        dfH2S_scale = pd.concat([pd.DataFrame([(self.dH2S_core[c][n][self.colH2S].min(),
-                                                self.dH2S_core[c][n][self.colH2S].max())
-                                               for n in self.dH2S_core[c].keys()]) for c in self.dH2S_core.keys()])
-        self.scale0 = dfH2S_scale[0].min(), dfH2S_scale[1].max()
-        self.scale = self.scale0
+        if checked is True:
+            # adjust all the core plots to the same x-scale (uncalibrated)
+            c = list(self.dH2S_core.keys())[0]
+            nr = list(self.dH2S_core[c].keys())[0]
+            # columns: Core, H2S_mV
+            self.colH2S = self.dH2S_core[c][nr].columns[1]
+            dfH2S_scale = pd.concat([pd.DataFrame([(self.dH2S_core[c][n][self.colH2S].min(),
+                                                    self.dH2S_core[c][n][self.colH2S].max())
+                                                   for n in self.dH2S_core[c].keys()]) for c in self.dH2S_core.keys()])
+            self.scale0 = dfH2S_scale[0].min(), dfH2S_scale[1].max()
+            self.scale = self.scale0
 
-        # plot the pH profile for the first core
-        figH2S0 = plot_H2SProfile(data_H2S=self.dH2S_core, core=min(self.ls_core), ls_core=self.ls_core, col=self.colH2S,
-                                  scale=self.scale0, dobj_hidH2S=dobj_hidH2S, fig=self.figh2s, ax=self.axh2s)
+            # plot the pH profile for the first core
+            figH2S0 = plot_H2SProfile(data_H2S=self.dH2S_core, core=min(self.ls_core), ls_core=self.ls_core,
+                                      col=self.colH2S, scale=self.scale0, dobj_hidH2S=dobj_hidH2S, fig=self.figh2s,
+                                      ax=self.axh2s)
 
-        # slider initialized to first core
-        self.sliderh2s.setMinimum(int(min(self.ls_core))), self.sliderh2s.setMaximum(int(max(self.ls_core)))
-        self.sliderh2s.setValue(int(min(self.ls_core)))
-        self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
+            # slider initialized to first core
+            self.sliderh2s.setMinimum(int(min(self.ls_core))), self.sliderh2s.setMaximum(int(max(self.ls_core)))
+            self.sliderh2s.setValue(int(min(self.ls_core)))
+            self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
-        # when slider value change (on click), return new value and update figure plot
-        self.sliderh2s.valueChanged.connect(self.sliderh2s_update)
+            # when slider value change (on click), return new value and update figure plot
+            self.sliderh2s.valueChanged.connect(self.sliderh2s_update)
 
-        # allow profile data adjustment and SWI correction of raw data
-        self.adjusth2s_button.setEnabled(True)
-        self.swih2s_edit.setEnabled(True), self.updateh2s_button.setEnabled(True), self.sFh2s_edit.setEnabled(True)
-        self.continueh2s_button.disconnect()
+            # allow profile data adjustment and SWI correction of raw data
+            self.adjusth2s_button.setEnabled(True)
+            self.swih2s_edit.setEnabled(True), self.updateh2s_button.setEnabled(True), self.sFh2s_edit.setEnabled(True)
+            self.continueh2s_button.disconnect()
 
-        # decide to which direction the code shall continue
-        if 'pH profile raw data' in results.keys():
-            # get information about correlation pH to H2S + pre-check if the excel file contains a correlation sheet
-            dsheets_add = self.load_additionalInfo()
-            results['pH - H2S correlation'] = dsheets_add['pH - H2S correlation']
+            # decide to which direction the code shall continue
+            if 'pH profile raw data' in results.keys():
+                # get information about correlation pH to H2S + pre-check if the excel file contains a correlation sheet
+                dsheets_add = self.load_additionalInfo()
+                results['pH - H2S correlation'] = dsheets_add['pH - H2S correlation']
 
-            # calculation of total sulfide possible
-            self.continueh2s_button.clicked.connect(self.continue_H2SIIa)
-        else:
-            # skip total sulfide but allow swi correction
-            self.continueh2s_button.clicked.connect(self.continue_H2SIIb)
+                # calculation of total sulfide possible
+                self.continueh2s_button.clicked.connect(self.continue_H2SIIa)
+            else:
+                # skip total sulfide but allow swi correction
+                self.continueh2s_button.clicked.connect(self.continue_H2SIIb)
 
     def getOriginal_pH(self, corepH, sample):
         if 'pH swi depth' in results.keys():
             corepH1 = _findCoreLabel(option1=corepH, option2=int(corepH.split(' ')[1]), ls=results['pH swi depth'].keys())
-            print(corepH1)
+
             if corepH1:
                 if isinstance(results['pH swi depth'][corepH1], float):
                     corr = results['pH swi depth'][corepH1]
@@ -3114,14 +3139,18 @@ class h2sPage(QWizardPage):
         para = 'total sulfide zero corr_µmol/L'
         dscale = dict()
         for c in dsulfide.keys():
-            l = [(dsulfide[c][nr][para].min(), dsulfide[c][nr][para].max()) for nr in dsulfide[c].keys()]
-            dscale[c] = pd.DataFrame((np.min(l), np.max(l)))
-        self.scaleS0 = None#(pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
+            l = np.array([(dsulfide[c][nr][para].min(), dsulfide[c][nr][para].max()) for nr in dsulfide[c].keys()])
+
+            # outlier test
+            l = l[(l > np.quantile(l, 0.1)) & (l < np.quantile(l, 0.75))].tolist()
+
+            # summarize for absolute min/max analysis
+            dscale[c] = pd.DataFrame((np.min(l), np.median(l)))
+        self.scaleS0 = (pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
         self.col2 = para
 
         # update column name that shall be plotted
         te = True if core_select in scaleh2s.keys() else False
-        print(3124, scaleh2s, self.scaleS0, te)
         figH2S0 = plot_H2SProfile(data_H2S=dsulfide, core=core_select, ls_core=self.ls_core, scale=self.scaleS0, ls='-',
                                   fig=self.figh2s, ax=self.axh2s, col=self.col2, dobj_hidH2S=dobj_hidH2S, trimexact=te)
 
@@ -3162,7 +3191,6 @@ class h2sPage(QWizardPage):
         else:
             scale_plot = self.scale0
         te = True if core_select in scaleh2s.keys() else False
-        print(3165, scaleh2s, scale_plot, te)
         figH2S = plot_H2SProfile(data_H2S=self.data, core=core_select, ls_core=self.ls_core, scale=scale_plot, ls='-',
                                  fig=self.figh2s, ax=self.axh2s, col=self.colH2S, dobj_hidH2S=dobj_hidH2S, trimexact=te)
         self.figh2s.canvas.draw()
@@ -3451,6 +3479,7 @@ class h2sPage(QWizardPage):
                 dfigPen[f].savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=dpi)
 
     def reset_H2Spage(self):
+        self.status_h2s = 0
         # reset global parameter
         global scaleh2s
         scaleh2s = dict()
@@ -3467,7 +3496,6 @@ class h2sPage(QWizardPage):
             results.pop('H2S profile swi corrected')
 
         # update status for process control
-        self.status_h2s = 0
         self.scale = None
         if self.dH2S_core:
             dfH2S_scale = pd.concat([pd.DataFrame([(self.dH2S_core[c][n][self.colH2S].min(),
@@ -3480,7 +3508,7 @@ class h2sPage(QWizardPage):
         self.sal_edit.setText('0.')
 
         # connect plot button to first part
-        # self.continueh2s_button.disconnect()
+        self.continueh2s_button.disconnect()
         self.continueh2s_button.clicked.connect(self.continue_H2S)
         self.continueh2s_button.setEnabled(True)
         self.adjusth2s_button.setEnabled(False)
@@ -3728,13 +3756,14 @@ class AdjustpHWindowS(QDialog):
         self.ls_out, self.ls_cropy = list(), list()
 
         # get actual scale
-        if len(self.H2Strim_edit.text().split('-')) > 1:
-            # assume that negative numbers occur
-            ls = re.findall(r"[-+]?(?:\d*\.\d+|\d+)", self.H2Strim_edit.text())
-            self.scale = (float(ls[0]), float(ls[1]))
-        else:
-            self.scale = (float(self.H2Strim_edit.text().split('-')[0]),
-                          float(self.H2Strim_edit.text().split('-')[1].strip()))
+        if self.H2Strim_edit.text():
+            if len(self.H2Strim_edit.text().split('-')) > 1:
+                # assume that negative numbers occur
+                ls = re.findall(r"[-+]?(?:\d*\.\d+|\d+)", self.H2Strim_edit.text())
+                self.scale = (float(ls[0]), float(ls[1]))
+            else:
+                self.scale = (float(self.H2Strim_edit.text().split('-')[0]),
+                              float(self.H2Strim_edit.text().split('-')[1].strip()))
 
         # allow only discrete values according to existing cores
         sample_select = min(self.dic_H2S[self.Core].keys(), key=lambda x: abs(x - self.slider1H2S.value()))
@@ -3752,7 +3781,6 @@ class AdjustpHWindowS(QDialog):
             pH_core = self.df_correl[self.df_correl['H2S code'] == c]['pH code'].to_numpy()[0]
 
         pH_data = results['pH profile raw data'] if 'pH profile raw data' in results.keys() else None
-        print(3757, pH_core, pH_sample)
         fig, self.ax1 = plot_adjustH2S(core=self.Core, sample=sample_select, dfCore=self.dic_H2S[self.Core],
                                        scale=self.scale, fig=self.figH2Ss, ax=self.axH2Ss, col=self.colH2S,
                                        pH=pH_data, pH_sample=pH_sample, pH_core=pH_core, ax1=self.ax1)
@@ -3791,29 +3819,31 @@ class AdjustpHWindowS(QDialog):
 
     def updateH2Sscale(self):
         # get pH range form LineEdit
-        if '-' in self.H2Strim_edit.text():
-            if len(self.H2Strim_edit.text().split('-')) > 1:
-                # assume that negative numbers occur
-                ls = re.findall(r"[-+]?(?:\d*\.\d+|\d+)", self.H2Strim_edit.text())
-                scale = (float(ls[0]), float(ls[1]))
+        if self.H2Strim_edit.text():
+            if '-' in self.H2Strim_edit.text():
+                if len(self.H2Strim_edit.text().split('-')) > 1:
+                    # assume that negative numbers occur
+                    ls = re.findall(r"[-+]?(?:\d*\.\d+|\d+)", self.H2Strim_edit.text())
+                    scale = (float(ls[0]), float(ls[1]))
+                else:
+                    scale = (float(self.H2Strim_edit.text().split('-')[0]),
+                             float(self.H2Strim_edit.text().split('-')[1].strip()))
+            elif ',' in self.H2Strim_edit.text():
+                scale = (float(self.H2Strim_edit.text().split(',')[0]),
+                         float(self.H2Strim_edit.text().split(',')[1].strip()))
             else:
-                scale = (float(self.H2Strim_edit.text().split('-')[0]),
-                         float(self.H2Strim_edit.text().split('-')[1].strip()))
-
-        elif ',' in self.H2Strim_edit.text():
-            scale = (float(self.H2Strim_edit.text().split(',')[0]),
-                     float(self.H2Strim_edit.text().split(',')[1].strip()))
+                scale = (float(self.H2Strim_edit.text().split(' ')[0]),
+                         float(self.H2Strim_edit.text().split(' ')[1].strip()))
         else:
-            scale = (float(self.H2Strim_edit.text().split(' ')[0]),
-                     float(self.H2Strim_edit.text().split(' ')[1].strip()))
+            scale = None
 
         # if pH range was updated by the user -> update self.scale (prevent further down)
-        if scale != self.scale:
-            self.scale = scale
-
-        # update global variable
-        global scaleh2s
-        scaleh2s[self.Core] = (round(self.scale[0], 2), round(self.scale[1], 2))
+        if scale:
+            if scale != self.scale:
+                self.scale = scale
+            # update global variable
+            global scaleh2s
+            scaleh2s[self.Core] = (round(self.scale[0], 2), round(self.scale[1], 2))
 
     def cropDF_H2S(self, s):
         if self.ls_cropy:
@@ -3885,7 +3915,8 @@ class AdjustpHWindowS(QDialog):
         self.figH2Ss.canvas.draw()
 
         #  update range for pH plot and plot in main window
-        self.H2Strim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
+        if self.scale:
+            self.H2Strim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
         fig0 = plot_H2SProfile(data_H2S=self.dic_H2S, core=self.Core, ls_core=self.dic_H2S.keys(), scale=self.scale,
                                fig=self.figH2S, ax=self.axH2S, col=self.colH2S, dobj_hidH2S=dobj_hidH2S, ls=self.ls)[0]
         self.figH2S.canvas.draw()
@@ -3976,6 +4007,8 @@ def plot_H2SProfile(data_H2S, core, ls_core, col, dobj_hidH2S, ls='-.', scale=No
                 alpha_ = .0 if 'sample ' + str(nr) in dobj_hidH2S[labCore] else .6
             else:
                 alpha_ = .6
+            #print(para)
+            #print(data_H2S[labCore][nr])
             df = data_H2S[labCore][nr][para].dropna()
             mark = '.' if ls == '-.' else None
             lw = .75 if ls == '-.' else 1.
@@ -4094,15 +4127,15 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pH_core, pHnr, fig
         # correlated pH sample Nr.
         if isinstance(pH_core, str):
             pH_core = _findCoreLabel(option1=pH_core, option2=int(pH_core.split(' ')[1]), ls=results['pH profile raw data'].keys())
-        print(pH_core, results['pH profile raw data'].keys())
         ax1.plot(results['pH profile raw data'][pH_core][pHnr]['pH'], results['pH profile raw data'][pH_core][pHnr].index+corr,
                  lw=0.75, ls='--', color='#971EB3', alpha=0.75)
 
     # general layout
-    scale_min = scale[0] if trimexact is True else -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
-    scale_max = scale[1] if trimexact is True else scale[1]*1.015
-    print(4107, scale_min, scale_max)
-    ax.invert_yaxis(), ax.set_xlim(scale_min, scale_max)
+    if scale:
+        scale_min = scale[0] if trimexact is True else -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
+        scale_max = scale[1] if trimexact is True else scale[1]*1.015
+        ax.set_xlim(scale_min, scale_max)
+    ax.invert_yaxis()
     sns.despine()
     if pH:
         ax.spines['top'].set_visible(True)
@@ -4161,7 +4194,6 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, pH_core
                 pass
         else:
             if pHnr not in results['pH adjusted'][pH_core].keys():
-                print(pH_core, pHnr)
                 msgBox = QMessageBox()
                 msgBox.setIcon(QMessageBox.Information)
                 msgBox.setText("Selected pH group not found: {} in {}".format(pHnr, 
@@ -4343,34 +4375,39 @@ class epPage(QWizardPage):
 
         # pre-check whether EP_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='EP')
+        checked = checkDatavsPara(sheet_select, par='EP')
 
-        #  prepare file depending on the type
-        ddata = dsheets[sheet_select].set_index('Nr')
-        global grp_label
-        if grp_label is None:
-            grp_label = ddata.columns[0]
+        if checked is True:
+            #  prepare file depending on the type
+            ddata = dsheets[sheet_select].set_index('Nr')
+            global grp_label
+            if grp_label is None:
+                grp_label = ddata.columns[0]
 
-        # list all available cores for pH sheet (in timely order, e.g., not ordered in ascending/ descending order)
-        self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
+            # list all available cores for pH sheet (in timely order, e.g., not ordered in ascending/ descending order)
+            self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
 
-        # import all measurements for given parameter
-        [self.dEP_core, ls_nr,
-         self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
+            # import all measurements for given parameter
+            [self.dEP_core, ls_nr,
+             self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
 
-        # order depth index ascending
-        self.dEP_core = dict(map(lambda c: (c, dict(map(lambda s: (s, self.dEP_core[c][s].sort_index(ascending=True)),
-                                                        self.dEP_core[c].keys()))), self.dEP_core.keys()))
-        results['EP adjusted'] =  self.dEP_core
+            # order depth index ascending
+            self.dEP_core = dict(map(lambda c: (c, dict(map(lambda s: (s, self.dEP_core[c][s].sort_index(ascending=True)),
+                                                            self.dEP_core[c].keys()))), self.dEP_core.keys()))
+            results['EP adjusted'] =  self.dEP_core
 
-        # separate storage of raw data
-        results['EP raw data'] = dict()
-        for c in results['EP adjusted'].keys():
-            ddic = dict()
-            for i in results['EP adjusted'][c].keys():
-                df_i = pd.DataFrame(np.array(results['EP adjusted'][c][i]), index=results['EP adjusted'][c][i].index,
-                                    columns=results['EP adjusted'][c][i].columns)
-                ddic[i] = df_i
-            results['EP raw data'][c] = ddic
+            # separate storage of raw data
+            results['EP raw data'] = dict()
+            for c in results['EP adjusted'].keys():
+                ddic = dict()
+                for i in results['EP adjusted'][c].keys():
+                    df_i = pd.DataFrame(np.array(results['EP adjusted'][c][i]), index=results['EP adjusted'][c][i].index,
+                                        columns=results['EP adjusted'][c][i].columns)
+                    ddic[i] = df_i
+                results['EP raw data'][c] = ddic
+        else:
+            self.reset_EPpage()
+        return checked
 
     def load_additionalInfo(self):
         # convert potential str-list into list of strings
@@ -4410,35 +4447,36 @@ class epPage(QWizardPage):
 
         # set status for process control and load data
         self.status_EP += 1
-        self.load_EPdata()
+        checked = self.load_EPdata()
 
-        # adjust all the core plots to the same x-scale
-        dfEP_scale = pd.concat([pd.DataFrame([(self.dEP_core[c][n]['EP_mV'].min(), self.dEP_core[c][n]['EP_mV'].max())
-                                              for n in self.dEP_core[c].keys()]) for c in self.dEP_core.keys()])
-        self.scale0 = dfEP_scale[0].min(), dfEP_scale[1].max()
-        # use self.scale0 for the initial plot but make it possible to update self.scale
-        self.scale = scaleEP[min(self.ls_core)] if min(self.ls_core) in scaleEP.keys() else self.scale0
-        # plot the pH profile for the first core
-        ls = '-.' if self.status_EP < 2 else '-'
-        figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core), ls=ls,
-                                    ls_core=self.ls_core, col_name='EP_mV', dobj_hidEP=dobj_hidEP, ax=self.axEP,
-                                    fig=self.figEP)
-        # slider initialized to first core
-        self.sliderEP.setMinimum(int(min(self.ls_core))), self.sliderEP.setMaximum(int(max(self.ls_core)))
-        self.sliderEP.setValue(int(min(self.ls_core)))
-        self.sldEP_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
+        if checked is True:
+            # adjust all the core plots to the same x-scale
+            dfEP_scale = pd.concat([pd.DataFrame([(self.dEP_core[c][n]['EP_mV'].min(), self.dEP_core[c][n]['EP_mV'].max())
+                                                  for n in self.dEP_core[c].keys()]) for c in self.dEP_core.keys()])
+            self.scale0 = dfEP_scale[0].min(), dfEP_scale[1].max()
+            # use self.scale0 for the initial plot but make it possible to update self.scale
+            self.scale = scaleEP[min(self.ls_core)] if min(self.ls_core) in scaleEP.keys() else self.scale0
+            # plot the pH profile for the first core
+            ls = '-.' if self.status_EP < 2 else '-'
+            figEP0 = plot_initalProfile(data=self.dEP_core, para='EP', unit='mV', core=min(self.ls_core), ls=ls,
+                                        ls_core=self.ls_core, col_name='EP_mV', dobj_hidEP=dobj_hidEP, ax=self.axEP,
+                                        fig=self.figEP)
+            # slider initialized to first core
+            self.sliderEP.setMinimum(int(min(self.ls_core))), self.sliderEP.setMaximum(int(max(self.ls_core)))
+            self.sliderEP.setValue(int(min(self.ls_core)))
+            self.sldEP_label.setText('{}: {}'.format(self.ls_colname[0], int(min(self.ls_core))))
 
-        # when slider value change (on click), return new value and update figure plot
-        self.sliderEP.valueChanged.connect(self.sliderEP_update)
+            # when slider value change (on click), return new value and update figure plot
+            self.sliderEP.valueChanged.connect(self.sliderEP_update)
 
-        # update continue button to "update" in case the swi shall be updated
-        self.updateEP_button.setEnabled(True), self.adjustEP_button.setEnabled(True), self.swi_edit.setEnabled(True)
-        self.continueEP_button.disconnect()
-        if self.driftEP_box.isChecked():
-            self.continueEP_button.clicked.connect(self.continue_EPIIa)
-        else:
-            self.continueEP_button.clicked.connect(self.continue_EPIIb)
-            self.swi_edit.setEnabled(True)
+            # update continue button to "update" in case the swi shall be updated
+            self.updateEP_button.setEnabled(True), self.adjustEP_button.setEnabled(True), self.swi_edit.setEnabled(True)
+            self.continueEP_button.disconnect()
+            if self.driftEP_box.isChecked():
+                self.continueEP_button.clicked.connect(self.continue_EPIIa)
+            else:
+                self.continueEP_button.clicked.connect(self.continue_EPIIb)
+                self.swi_edit.setEnabled(True)
 
     def sliderEP_update(self):
         if self.ls_core:
@@ -4503,9 +4541,7 @@ class epPage(QWizardPage):
         self.continueEP_button.setEnabled(False)
 
     def drift_correctionEP(self):
-        print('drift correction start...')
-
-        # !!!TODO: get meta data from measurement sheet (separate function)
+        # import meta-data info from excel file
         dsheets_add = self.load_additionalInfo()
 
         if dsheets_add:
@@ -5037,7 +5073,6 @@ class AdjustWindowEP(QDialog):
         #  update range for pH plot and plot in main window
         self.EPtrim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
         ls = '-.' if self.status_EP < 1 else '-'
-        print(5006, ls, self.ls)
         fig0 = plot_initalProfile(data=self.ddata, para='EP', unit='mV', col_name='EP_mV', core=self.Core, ls=self.ls,
                                   ls_core=self.ddata.keys(), dobj_hidEP=dobj_hidEP, fig=self.figEP, ax=self.axEP,
                                   trimexact=True)
@@ -5635,7 +5670,7 @@ class SalConvWindowO2(QDialog):
     def __init__(self, temp_edit_degC, salinity_edit):
         super().__init__()
         # get transferred parameter
-        self.temp_degC = float(temp_edit_degC)
+        self.temp_degC = temp_edit_degC
         self.salinity = salinity_edit
 
         # initiate layout
@@ -5671,7 +5706,7 @@ class SalConvWindowO2(QDialog):
         temp_label.setText('Temperature: '), temp_unit_label.setText('degC')
         self.temp_edit = QLineEdit(self)
         self.temp_edit.setValidator(QDoubleValidator()), self.temp_edit.setAlignment(Qt.AlignRight)
-        self.temp_edit.setMaximumWidth(100), self.temp_edit.setText(str(self.temp_degC))
+        self.temp_edit.setMaximumWidth(100), self.temp_edit.setText(str(self.temp_degC.text()))
 
         sal_label, sal_unit_label = QLabel(self), QLabel(self)
         sal_label.setText('Salinity: '), sal_unit_label.setText('PSU')
@@ -5753,10 +5788,11 @@ class SalConvWindowO2(QDialog):
                 len(self.temp_edit.text().strip()) == 0:
             pass
         else:
-            salinity = sal.SalCon_Converter(temp_degC=self.temp_degC, p_dbar=10/1*float(self.atm_edit.text()), M=0,
-                                            cnd=float(self.cnd_edit.text()))
+            salinity = sal.SalCon_Converter(temp_degC=float(self.temp_edit.text().strip()),  M=0,
+                                            cnd=float(self.cnd_edit.text()), p_dbar=10/1*float(self.atm_edit.text()))
             self.sal_edit.setText(str(round(salinity, 3)))
             results['salinity PSU'] = salinity
+            results['temperature degC'] = float(self.temp_edit.text().strip())
 
     def reset_window(self):
         # reset input parameter
@@ -5770,6 +5806,7 @@ class SalConvWindowO2(QDialog):
     def close_window(self):
         self.hide()
         self.salinity.setText(str(round(results['salinity PSU'], 3)))
+        self.temp_degC.setText(str(results['temperature degC']))
 
 
 # --------------------------------------------------------------
@@ -5802,6 +5839,33 @@ def _findCoreLabel(option1, option2, ls):
     else:
         labCore = None
     return labCore
+
+
+def checkDatavsPara(sheet_select, par):
+    checked = False
+    try:
+        if sheet_select is None:
+            msgBox = QMessageBox()
+            msgBox.setIcon(QMessageBox.Information)
+            msgBox.setText(
+                "No measurement data found for selected parameter {}.  Please,  provide the raw measurement "
+                "file.".format(par))
+            msgBox.setFont(QFont('Helvetica Neue', 11))
+            msgBox.setWindowTitle("Warning")
+            msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+            msgBox.exec()
+        else:
+            checked = True
+    except:
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Information)
+        msgBox.setText("No measurement data found for selected parameter.  Please,  provide the raw measurement "
+                       "file.")
+        msgBox.setFont(QFont('Helvetica Neue', 11))
+        msgBox.setWindowTitle("Warning")
+        msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        msgBox.exec()
+    return checked
 
 
 # ---------------------------------------------------------------------------------------------------------------------
