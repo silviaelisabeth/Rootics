@@ -1943,7 +1943,7 @@ class phPage(QWizardPage):
 
     def continue_pH(self):
         self.setSubTitle("Now,  the SWI can be set.  Either choose the depth determined in the O2 project,  or set "
-                         "your own depth wisely.  Press PLOT to continue.\n")
+                         "your own depth wisely.  Press PLOT to continue.")
 
         # set status for process control
         self.status_pH = 0
@@ -2684,11 +2684,6 @@ class h2sPage(QWizardPage):
         self.sFh2s_edit.setValidator(QDoubleValidator()), self.sFh2s_edit.setAlignment(Qt.AlignRight)
         self.sFh2s_edit.setMaximumWidth(100), self.sFh2s_edit.setText('0.5'), self.sFh2s_edit.setEnabled(False)
 
-        # # option to select the SWI (baseline) from the O2 calculations in case O2 was selected
-        # self.swih2s_box = QCheckBox('SWI from O2 analysis', self)
-        # self.swih2s_box.setFont(QFont('Helvetica Neue', fs_font))
-        # self.swih2s_box.setVisible(True), self.swih2s_box.setEnabled(False)
-
         # Action button
         self.salcon_button = QPushButton('Converter', self)
         self.salcon_button.setFixedWidth(100), self.salcon_button.setFont(QFont('Helvetica Neue', fs_font))
@@ -3121,11 +3116,12 @@ class h2sPage(QWizardPage):
         for c in dsulfide.keys():
             l = [(dsulfide[c][nr][para].min(), dsulfide[c][nr][para].max()) for nr in dsulfide[c].keys()]
             dscale[c] = pd.DataFrame((np.min(l), np.max(l)))
-        self.scaleS0 = (pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
+        self.scaleS0 = None#(pd.concat(dscale, axis=1).T[0].min(), pd.concat(dscale, axis=1).T[1].max())
         self.col2 = para
 
         # update column name that shall be plotted
         te = True if core_select in scaleh2s.keys() else False
+        print(3124, scaleh2s, self.scaleS0, te)
         figH2S0 = plot_H2SProfile(data_H2S=dsulfide, core=core_select, ls_core=self.ls_core, scale=self.scaleS0, ls='-',
                                   fig=self.figh2s, ax=self.axh2s, col=self.col2, dobj_hidH2S=dobj_hidH2S, trimexact=te)
 
@@ -3166,6 +3162,7 @@ class h2sPage(QWizardPage):
         else:
             scale_plot = self.scale0
         te = True if core_select in scaleh2s.keys() else False
+        print(3165, scaleh2s, scale_plot, te)
         figH2S = plot_H2SProfile(data_H2S=self.data, core=core_select, ls_core=self.ls_core, scale=scale_plot, ls='-',
                                  fig=self.figh2s, ax=self.axh2s, col=self.colH2S, dobj_hidH2S=dobj_hidH2S, trimexact=te)
         self.figh2s.canvas.draw()
@@ -3489,7 +3486,7 @@ class h2sPage(QWizardPage):
         self.adjusth2s_button.setEnabled(False)
         self.swih2s_edit.setEnabled(False)
         self.updateh2s_button.setEnabled(False)
-        self.sFh2s_edit.setEnabled(False)
+        self.sFh2s_edit.setText('0'), self.sFh2s_edit.setEnabled(False)
 
         # reset slider
         self.count = 0
@@ -3587,7 +3584,8 @@ class AdjustpHWindowS(QDialog):
                                        scale=self.scaleS0, fig=self.figH2Ss, ax1=None, ax=self.axH2Ss, pH=self.pH_data,
                                        pH_sample=pH_sample, pH_core=pH_core)
         # set the range for pH
-        self.H2Strim_edit.setText(str(round(self.scaleS0[0], 2)) + ' - ' + str(round(self.scaleS0[1], 2)))
+        if self.scaleS0:
+            self.H2Strim_edit.setText(str(round(self.scaleS0[0], 2)) + ' - ' + str(round(self.scaleS0[1], 2)))
 
         # connect onclick event with function
         self.ls_out, self.ls_cropy = list(), list()
@@ -4103,6 +4101,7 @@ def plot_H2SUpdate(core, nr, df_H2Ss, ddcore, scale, col, pH, pH_core, pHnr, fig
     # general layout
     scale_min = scale[0] if trimexact is True else -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
     scale_max = scale[1] if trimexact is True else scale[1]*1.015
+    print(4107, scale_min, scale_max)
     ax.invert_yaxis(), ax.set_xlim(scale_min, scale_max)
     sns.despine()
     if pH:
@@ -4180,8 +4179,10 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, pH_core
                          lw=0.75, ls='--', color='#971EB3', alpha=0.75)
 
     # general layout
-    scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
-    ax.invert_yaxis(), ax.set_xlim(scale_min, scale[1]*1.015)
+    if scale:
+        scale_min = -1 * scale[1]/10 if scale[0] == 0 else scale[0]*0.95
+        ax.set_xlim(scale_min, scale[1] * 1.015)
+    ax.invert_yaxis()
     sns.despine()
     ax.spines['top'].set_visible(True) if pH else ax.spines['top'].set_visible(False)
     if pH:
@@ -4329,7 +4330,7 @@ class epPage(QWizardPage):
     def checkConnection_EP(self):
         if self.status_EP > 0:
             if self.driftEP_box.isChecked():
-                self.continueEP_button.clicked.connect(self.continue_EPII)
+                self.continueEP_button.clicked.connect(self.continue_EPIIa)
 
         # collect initial information
         if self.driftEP_box.isChecked():
@@ -4370,6 +4371,36 @@ class epPage(QWizardPage):
                                     columns=results['EP adjusted'][c][i].columns)
                 ddic[i] = df_i
             results['EP raw data'][c] = ddic
+
+    def load_additionalInfo(self):
+        # convert potential str-list into list of strings
+        if '[' in self.field("Data"):
+            ls_file = [i.strip()[1:-1] for i in self.field("Data")[1:-1].split(',')]
+        else:
+            ls_file = list(self.field("Data"))
+
+        # load excel sheet with all measurements
+        dic_sheets = dict()
+        for f in enumerate(ls_file):
+            dic_sheets_ = pd.read_excel(f[1], sheet_name=None)
+            # get the metadata and correlation sheets
+            df_meta = None
+            for c in dic_sheets_.keys():
+                if 'Meta' in c or 'meta' in c:
+                    df_meta = dic_sheets_[c]
+            dic_sheets[f[0]] = dict({'meta data': df_meta})
+
+        # merge and double check duplicates (especially for pH-H2S correlation)
+        dsheets_add = dic_sheets[0]
+        for en in range(len(ls_file) - 1):
+            # get meta data info
+            if 'meta data' in dic_sheets[en + 1].keys():
+                dfmeta_sum = pd.concat([dsheets_add['meta data'], dic_sheets[en + 1]['meta data']], axis=0)
+            else:
+                dfmeta_sum = dsheets_add['meta data']
+
+            dsheets_add = dict({'meta data': dfmeta_sum})
+        return dsheets_add
 
     def continue_EP(self):
         # update instruction
@@ -4438,7 +4469,7 @@ class epPage(QWizardPage):
         else:
             # correction of manually selected baseline
             for s in data[core_select].keys():
-                # H2S correction
+                # EP correction
                 ynew = data[core_select][s].index - float(self.swi_edit.text())
                 data[core_select][s].index = ynew
 
@@ -4446,9 +4477,9 @@ class epPage(QWizardPage):
         results['EP adjusted'] = data
 
         # plot the pH profile for the first core
-        ls = '-.' if self.status_EP < 1 else '-'
-        figEP0 = plot_initalProfile(data=data, para='EP', unit='mV', core=min(self.ls_core), ls_core=self.ls_core,
-                                    col_name='EP_mV', dobj_hidEP=dobj_hidEP, fig=self.figEP, ax=self.axEP, ls=ls)
+        ls = '-.' if self.status_EP < 2 else '-'
+        figEP0 = plot_initalProfile(data=data, para='EP', unit='mV', core=core_select, ls_core=self.ls_core, ls=ls,
+                                    col_name='EP_mV', dobj_hidEP=dobj_hidEP, fig=self.figEP, ax=self.axEP)
 
         # slider initialized to first core
         self.sliderEP.setValue(int(core_select))
@@ -4473,20 +4504,24 @@ class epPage(QWizardPage):
 
     def drift_correctionEP(self):
         print('drift correction start...')
-        # !!!TODO: get meta data from measurement sheet (separate function)
-        if 'Metadata' in self.dsheets.keys():
-            sheet = 'Metadata'
-        elif 'metadata' in self.dsheets.keys():
-            sheet = 'metadata'
-        elif 'meta' in self.dsheets.keys():
-            sheet = 'meta'
-        else:
-            sheet = None
-            print('no metadata sheet found. Continue without drift correction')
 
-        if sheet:
+        # !!!TODO: get meta data from measurement sheet (separate function)
+        dsheets_add = self.load_additionalInfo()
+
+        if dsheets_add:
             # additional window for packaged drift correction
-            self.driftCorr_EP(sheet)
+            self.driftCorr_EP(df_meta=dsheets_add['meta data'])
+        else:
+            msgBox = QMessageBox()
+            msgBox.setIcon(QMessageBox.Information)
+            msgBox.setText("No metadata sheet found.  Continue without EP drift correction.")
+            msgBox.setFont(QFont('Helvetica Neue', 11))
+            msgBox.setWindowTitle("Warning")
+            msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+
+            returnValue = msgBox.exec()
+            if returnValue == QMessageBox.Ok:
+                pass
 
     def continue_EPIIb(self):
         # update instruction
@@ -4537,10 +4572,10 @@ class epPage(QWizardPage):
         else:
             wAdjustEP.show()
 
-    def driftCorr_EP(self, sheet):
+    def driftCorr_EP(self, df_meta):
         # open dialog window to adjust data presentation
         global wDCep
-        wDCep = DriftWindow(self.ls_core, results['EP adjusted'], self.dsheets[sheet], self.core_select, self.axEP,
+        wDCep = DriftWindow(self.ls_core, results['EP adjusted'], df_meta, self.core_select, self.axEP,
                             self.figEP)
         if wDCep.isVisible():
             pass
@@ -4818,7 +4853,7 @@ class AdjustWindowEP(QDialog):
         # in-between for sample plot
         plotGp = QGroupBox()
         plotGp.setFont(QFont('Helvetica Neue', 12))
-        plotGp.setMinimumHeight(300)
+        plotGp.setMinimumHeight(450)
         gridFig = QGridLayout()
         vbox2_middle.addWidget(plotGp)
         plotGp.setLayout(gridFig)
@@ -4827,11 +4862,11 @@ class AdjustWindowEP(QDialog):
         gridFig.addWidget(self.slider1EP, 1, 1)
         gridFig.addWidget(self.sldEP1_label, 1, 0)
         gridFig.addWidget(self.canvasEPs, 2, 1)
-        gridFig.addWidget(self.naviEPs, 2, 1)
-        gridFig.addWidget(EPtrim_label, 3, 0)
-        gridFig.addWidget(self.EPtrim_edit, 3, 1)
-        gridFig.addWidget(swiSample_label, 4, 0)
-        gridFig.addWidget(self.swiSample_edit, 4, 1)
+        gridFig.addWidget(self.naviEPs, 3, 1)
+        gridFig.addWidget(EPtrim_label, 4, 0)
+        gridFig.addWidget(self.EPtrim_edit, 4, 1)
+        gridFig.addWidget(swiSample_label, 5, 0)
+        gridFig.addWidget(self.swiSample_edit, 5, 1)
 
         # bottom group for navigation panel
         naviGp = QGroupBox("Navigation panel")
@@ -4982,7 +5017,7 @@ class AdjustWindowEP(QDialog):
         # crop dataframe to selected range
         dcore_crop = self.cropDF_EP(s=s)
         # pop outliers from depth profile
-        df_pop = self.popData_EP(df_crop=dcore_crop, s=s) if self.ls_out else dcore_crop
+        df_pop = self.popData_EP(dcore_crop=dcore_crop) if self.ls_out else dcore_crop
 
         # check individual swi for sample
         if '--' in self.swiSample_edit.text():
@@ -5002,6 +5037,7 @@ class AdjustWindowEP(QDialog):
         #  update range for pH plot and plot in main window
         self.EPtrim_edit.setText(str(round(self.scale[0], 2)) + ' - ' + str(round(self.scale[1], 2)))
         ls = '-.' if self.status_EP < 1 else '-'
+        print(5006, ls, self.ls)
         fig0 = plot_initalProfile(data=self.ddata, para='EP', unit='mV', col_name='EP_mV', core=self.Core, ls=self.ls,
                                   ls_core=self.ddata.keys(), dobj_hidEP=dobj_hidEP, fig=self.figEP, ax=self.axEP,
                                   trimexact=True)
@@ -5040,7 +5076,7 @@ class DriftWindow(QDialog):
         # get meta data
         df = self.dsheets[self.dsheets['EP'] > 0][['deployment', 'code', 'EP']]
         self.dorder = dict(map(lambda n: (n, list([(int(t[1].split(' ')[-1]), t[0]) for t in df[df['EP'] == n].values])),
-                                list(dict.fromkeys(df['EP'].to_numpy()))))
+                               list(dict.fromkeys(df['EP'].to_numpy()))))
 
         # set slider to initial value
         self.sliderTD.setValue(self.nP), self.sldTD_label.setText('group: {}'.format(self.nP))
@@ -5238,7 +5274,7 @@ def plot_profileTime(nP, df_pack, resultsEP, dorder, fig=None, ax=None, show=Tru
 
     # indicate horizontal axes after individual profiles and add profile information
     len_prof = [len(resultsEP[p[0]][p[1]].sort_index(ascending=True)) for p in dorder[nP]]
-    ls_label = [grp_label + ' ' + str(p[0]) + ', sample ' + str(p[1]) for p in dorder[nP]]
+    ls_label = ['(' + str(p[0]) + '|' + str(p[1]) +')' for p in dorder[nP]]
 
     height = max(df_pack['EP_mV'].to_numpy())
     m, en = len_prof[0], 0
@@ -5286,6 +5322,8 @@ def plot_initalProfile(data, para, unit, col_name, core, ls_core, dobj_hidEP, ls
     plt.ioff()
     lines = list()
     # identify closest value in list
+    if isinstance(core, float) or isinstance(core, int):
+        core = _findCoreLabel(option1=core, option2='core ' + str(core), ls=ls_core)
     core_select = dbs.closest_core(ls_core=ls_core, core=core)
 
     # initialize figure
@@ -5764,6 +5802,7 @@ def _findCoreLabel(option1, option2, ls):
     else:
         labCore = None
     return labCore
+
 
 # ---------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
