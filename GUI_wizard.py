@@ -15,10 +15,9 @@ from PyQt5 import QtCore, QtWidgets
 from PyQt5 import QtGui
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                              QLineEdit, QDialog, QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget, QWizard,
-                             QWizardPage, QInputDialog, QMainWindow)
+                             QWizardPage, QTabWidget, QTableWidget, QTableWidgetItem)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import *
-import qtawesome as qta
 import numpy as np
 import seaborn as sns
 import pandas as pd
@@ -99,10 +98,6 @@ class MagicWizard(QWizard):
         self.setPage(wizard_page_index["charPage"], self.char_project)
         self.avergaeLP_project = avProfilePage()
         self.setPage(wizard_page_index["averageLP"], self.avergaeLP_project)
-        self.o2flux_project = o2fluxPage()
-        self.setPage(wizard_page_index["O2 flux"], self.o2flux_project)
-        self.EPstats_project = epStatsPage()
-        self.setPage(wizard_page_index["EP stats"], self.EPstats_project)
         self.jointPlot_project = jointPlotPage()
         self.setPage(wizard_page_index["joint plots"], self.jointPlot_project)
         self.finalPage = FinalPage()
@@ -1955,7 +1950,7 @@ class phPage(QWizardPage):
 
     def continue_pH(self):
         self.setSubTitle("Now,  the SWI can be set.  Either choose the depth determined in the O2 project,  or set "
-                         "your own depth wisely.  Press PLOT to continue.")
+                         "your own depth wisely.  Press PLOT to continue. \n")
 
         # set status for process control
         self.status_pH = 0
@@ -3211,7 +3206,9 @@ class h2sPage(QWizardPage):
             pass
         else:
             # correction of manually selected baseline
+            core_select = _findCoreLabel(option1=core_select, option2='core '+str(core_select), ls=list(data.keys()))
             for s in data[core_select].keys():
+                print(s)
                 # H2S correction
                 ynew = data[core_select][s].index - float(self.swih2s_edit.text())
                 data[core_select][s].index = ynew
@@ -3247,6 +3244,8 @@ class h2sPage(QWizardPage):
         figH2S0 = plot_H2SProfile(data_H2S=data, core=core_select, ls_core=self.ls_core, col=self.colH2S, ax=self.axh2s,
                                   scale=self.scale0, dobj_hidH2S=dobj_hidH2S, fig=self.figh2s, trimexact=te, ls=ls)[0]
         # slider initialized to first core
+        if isinstance(core_select, str):
+            core_select = int(core_select.split(' ')[1])
         self.sliderh2s.setValue(int(core_select))
         self.sldh2s_label.setText('{}: {}'.format(self.ls_colname[0], int(core_select)))
 
@@ -5524,8 +5523,7 @@ class charPage(QWizardPage):
         super(charPage, self).__init__(parent)
         self.setTitle("Further sediment characterization")
         self.setSubTitle("Select how you want to pursue next.  In case you have more than one profile for a core,  "
-                         "select Average depth profiles.  Then,  you can choose to calculate the O2 consumption as "
-                         "well as some EP statistics.  The last step could be to plot different parameters together"
+                         "select Average depth profiles.  Then,  you can choose to plot different parameters together"
                          " in a joint plot. \n")
 
         # create layout
@@ -5533,8 +5531,6 @@ class charPage(QWizardPage):
 
         # connect checkbox and load file button with a function
         self.av_box.clicked.connect(self.nextStep_selection)
-        # self.O2stats_box.clicked.connect(self.nextStep_selection)
-        self.EPstats_box.clicked.connect(self.nextStep_selection)
         self.jointPlot_box.clicked.connect(self.nextStep_selection)
 
         # when all conditions are met, enable NEXT button
@@ -5545,12 +5541,6 @@ class charPage(QWizardPage):
         # checkbox for subprojects
         self.av_box = QCheckBox('Average depth profiles per core', self)
         self.av_box.setFont(QFont('Helvetica Neue', 12))
-
-        # self.O2stats_box = QCheckBox('O2 consumption', self)
-        # self.O2stats_box.setFont(QFont('Helvetica Neue', 12))
-
-        self.EPstats_box = QCheckBox('EP statistics', self)
-        self.EPstats_box.setFont(QFont('Helvetica Neue', 12))
 
         self.jointPlot_box = QCheckBox('joint plot of parameters', self)
         self.jointPlot_box.setFont(QFont('Helvetica Neue', 12))
@@ -5570,9 +5560,7 @@ class charPage(QWizardPage):
 
         # include widgets in the layout
         grid_set.addWidget(self.av_box, 0, 0)
-        # grid_set.addWidget(self.O2stats_box, 1, 0)
-        grid_set.addWidget(self.EPstats_box, 2, 0)
-        grid_set.addWidget(self.jointPlot_box, 3, 0)
+        grid_set.addWidget(self.jointPlot_box, 1, 0)
 
         self.setLayout(mlayout2)
 
@@ -5580,10 +5568,6 @@ class charPage(QWizardPage):
         ls_next = list()
         if self.av_box.isChecked() is True:
             ls_next.append('averageLP')
-        # if self.O2stats_box.isChecked() is True:
-        #    ls_next.append('O2 flux')
-        if self.EPstats_box.isChecked() is True:
-            ls_next.append('EP stats')
         if self.jointPlot_box.isChecked() is True:
             ls_next.append('joint plots')
         self.ls_next.setText(','.join(ls_next))
@@ -5603,44 +5587,139 @@ class avProfilePage(QWizardPage):
         self.setTitle("Average depth profiles")
         self.setSubTitle("The averaging is done for each anaylte and each core. \n\n\n")
 
+        # create layout
+        self.initUI()
+
+        # fill the table in the different tabs
+        self.fill_tabula()
+
+        # connect checkbox and load file button with a function
+        self.update_btn.clicked.connect(self.fill_tabula)
+
+    def initUI(self):
+        # create update button
+        self.update_btn = QPushButton('Update', self)
+        self.update_btn.setFixedWidth(100)
+        #self.average_btn = QPushButton('Average', self)
+        #self.average_btn.setFixedWidth(100)
+
+        # initiate tables of available core / sample profiles for all parameters
+        self.tabula_O2, self.tabula_pH, self.tabula_H2S = self.Tablula(), self.Tablula(), self.Tablula()
+        self.tabula_EP = self.Tablula()
+
+        # creating window layout
+        w = QWidget()
+        mlayout2 = QVBoxLayout(w)
+        vbox_top, vbox = QHBoxLayout(), QVBoxLayout()
+        mlayout2.addLayout(vbox_top), mlayout2.addLayout(vbox)
+
+        # table of core / available sample profiles and a column to select the profiles to be averaged
+        self.tabs_1 = QTabWidget()
+        self.tab1_1, self.tab2_1, self.tab3_1, self.tab4_1 = QWidget(), QWidget(), QWidget(), QWidget()
+
+        # Add tabs
+        self.tabs_1.addTab(self.tab1_1, "O2")
+        self.tabs_1.addTab(self.tab2_1, "pH")
+        self.tabs_1.addTab(self.tab3_1, "H2S/total sulfide ΣS2")
+        self.tabs_1.addTab(self.tab4_1, "EP")
+
+        # Add tabs to widget
+        vbox.addWidget(self.tabs_1)
+        # add tables to respective tab
+        self.O2vbox = QVBoxLayout(self.tab1_1)
+        self.O2vbox.addWidget(self.tabula_O2)
+        self.pHvbox = QVBoxLayout(self.tab2_1)
+        self.pHvbox.addWidget(self.tabula_pH)
+        self.H2Svbox = QVBoxLayout(self.tab3_1)
+        self.H2Svbox.addWidget(self.tabula_H2S)
+        self.EPvbox = QVBoxLayout(self.tab4_1)
+        self.EPvbox.addWidget(self.tabula_EP)
+
+        # add update button to the layout
+        vbox_top.addWidget(self.update_btn)
+        # vbox_top.addWidget(self.average_btn)
+
+        self.setLayout(mlayout2)
+
+    def Tablula(self):
+        tabula = QTableWidget(self)
+        tabula.setColumnCount(3), tabula.setRowCount(1)
+        tabula.setHorizontalHeaderLabels(['Group', 'Profile-ID', 'Include for averaging'])
+        tabula.resizeColumnsToContents(), tabula.resizeRowsToContents()
+        tabula.adjustSize()
+        return tabula
+
+    def fill_tabula(self):
+        #!!!TODO: make it more efficient
+        self.count = 0
+        ls_o2 = list()
+        [ls_o2.append(k) for k in results.keys() if 'O2' in k]
+        ls_pH = list()
+        [ls_pH.append(k) for k in results.keys() if 'pH' in k]
+        ls_H2S = list()
+        [ls_H2S.append(k) for k in results.keys() if 'H2S' in k]
+        ls_EP = list()
+        [ls_EP.append(k) for k in results.keys() if 'EP' in k]
+
+        # get information on group / profile-ID
+        if ls_o2:
+            dcoreO2 = dict(map(lambda c: (intLab(c), [i[0] for i in results[ls_o2[0]][c].keys()]), results[ls_o2[0]].keys()))
+        else:
+            dcoreO2 = None
+        if ls_pH:
+            dcorepH = dict(map(lambda c: (intLab(c), list(results[ls_pH[0]][c].keys())), results[ls_pH[0]].keys()))
+        if ls_H2S:
+            dcoreH2S = dict(map(lambda c: (intLab(c), list(results[ls_H2S[0]][c].keys())), results[ls_H2S[0]].keys()))
+        if ls_EP:
+            dcoreEP = dict(map(lambda c: (intLab(c), list(results[ls_EP[0]][c].keys())), results[ls_EP[0]].keys()))
+
+        # actually fill current table with information
+        if self.tabs_1.currentIndex() == 0 and dcoreO2:
+            print('O2 tab is open', dcoreO2)
+            # get number of columns in table
+            new_row = self.tabula_O2.rowCount()
+            x0 = new_row - 1
+            # check whether this (last) row is empty
+            item = self.tabula_O2.item(x0, 0)
+            x = x0 if not item or not item.text() else x0 + 1
+
+            # add the number of rows according to keys in dictionary
+            nrows = np.sum([len(dcoreO2[n]) for n in list(dcoreO2.keys())])
+            self.tabula_O2.setRowCount(nrows)
+
+            # actually fill the table
+            for k in dcoreO2.keys():
+                itemGrp = QTableWidgetItem(str(k))
+                itemGrp.setTextAlignment(Qt.AlignRight)
+                for en, p in enumerate(dcoreO2[k]):
+                    item = QTableWidgetItem(str(p))
+                    item.setTextAlignment(Qt.AlignRight)
+
+                    # per default all profiles are used for averaging
+                    itemSel = QTableWidgetItem(str('Y'))
+                    itemSel.setTextAlignment(Qt.AlignRight)
+
+                    # item structure: row, table, content
+                    self.tabula_O2.setItem(x, 0, itemGrp)
+                    self.tabula_O2.setItem(x, 1, item)
+                    self.tabula_O2.setItem(x, 2, itemSel)
+
+                    # go to the next row
+                    x += 1
+
+            self.tabula_O2.resizeColumnsToContents(), self.tabula_O2.resizeRowsToContents()
+
+        elif self.tabs_1.currentIndex() == 1:
+            print('pH tab is open')
+        elif self.tabs_1.currentIndex() == 2:
+            print('H2S tab is open')
+        else:
+            print('EP tab is open')
+
     def nextId(self) -> int:
         ls_para = list(self.field('next steps').split(','))
         # remove already visited pages
         ls_para.remove("averageLP")
-        if len(ls_para) >= 1:
-            return wizard_page_index[ls_para[0]]
-        else:
-            return wizard_page_index['final page']
-
-
-# -----------------------------------------------
-class o2fluxPage(QWizardPage):
-    def __init__(self, parent=None):
-        super(o2fluxPage, self).__init__(parent)
-        self.setTitle("Calculate O2 flux consumption rates")
-        self.setSubTitle("\n")
-
-    def nextId(self) -> int:
-        ls_para = list(self.field('next steps').split(','))
-        # remove already visited pages
-        ls_para.remove("averageLP"), ls_para.remove("O2 flux")
-        if len(ls_para) >= 1:
-            return wizard_page_index[ls_para[0]]
-        else:
-            return wizard_page_index['final page']
-
-
-# -----------------------------------------------
-class epStatsPage(QWizardPage):
-    def __init__(self, parent=None):
-        super(epStatsPage, self).__init__(parent)
-        self.setTitle("EP statistics")
-        self.setSubTitle("\n")
-
-    def nextId(self) -> int:
-        ls_para = list(self.field('next steps').split(','))
-        # remove already visited pages
-        ls_para.remove("averageLP"), ls_para.remove("O2 flux"), ls_para.remove("EP stats")
         if len(ls_para) >= 1:
             return wizard_page_index[ls_para[0]]
         else:
@@ -5658,6 +5737,7 @@ class jointPlotPage(QWizardPage):
         return wizard_page_index['final page']
 
 
+# -----------------------------------------------
 class FinalPage(QWizardPage):
     def __init__(self, parent=None):
         super(FinalPage, self).__init__(parent)
@@ -5839,6 +5919,14 @@ def _findCoreLabel(option1, option2, ls):
     else:
         labCore = None
     return labCore
+
+
+def intLab(c):
+    if isinstance(c, str):
+        cnew = int(c.split(' ')[1])
+    else:
+        cnew = c
+    return cnew
 
 
 def checkDatavsPara(sheet_select, par):
