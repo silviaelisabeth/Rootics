@@ -50,7 +50,7 @@ fs_font, fs_ = 10, 10
 sns.set_context('paper'), sns.set_style('ticks')
 
 # global variables for individual projects
-dcol_label, results, dout = dict(), dict(), dict()
+dcol_label, results, dout, dav, tabcorr = dict(), dict(), dict(), dict(), None
 
 # O2 project
 core_select, userCal, ret = None, None, None
@@ -249,9 +249,6 @@ class IntroPage(QWizardPage):
             pass
         else:
             wSet.show()
-
-    #def softwareFile(self):
-    #    self.OutPut.setText(str(self.OutPut_box.isChecked()))
 
     def total_sulfide(self):
         if self.h2s_box.isChecked() is True:
@@ -4632,7 +4629,7 @@ class epPage(QWizardPage):
             if 'fit_mV' in ls_removeKey:
                 ls_removeKey.append('derivative_mV')
 
-            # delete a keys not in that list regardless of whether it is in the dictionary
+            # delete all keys not in that list regardless of whether it is in the dictionary
             [dout.pop(i, None) for i in ls_removeKey]
 
             # save to excel sheets
@@ -5585,23 +5582,33 @@ class avProfilePage(QWizardPage):
     def __init__(self, parent=None):
         super(avProfilePage, self).__init__(parent)
         self.setTitle("Average depth profiles")
-        self.setSubTitle("The averaging is done for each anaylte and each core. \n\n\n")
+        self.setSubTitle("The averaging is done for each anaylte and each core.  First load all available profiles by"
+                         "pressing Update.  Now,  you can deselect all profiles,  that shall not be considered for "
+                         "averaging.  You can do so either by clearing the respective cell or by inserting an N.")
 
         # create layout
         self.initUI()
+        self.dcore = dict()
 
         # fill the table in the different tabs
         self.fill_tabula()
 
         # connect checkbox and load file button with a function
         self.update_btn.clicked.connect(self.fill_tabula)
+        self.average_btn.clicked.connect(self.average_profiles)
+        self.clear_btn.clicked.connect(self.reset_tabula)
+        self.save_btn.clicked.connect(self.save_avProfiles)
 
     def initUI(self):
         # create update button
         self.update_btn = QPushButton('Update', self)
-        self.update_btn.setFixedWidth(100)
-        #self.average_btn = QPushButton('Average', self)
-        #self.average_btn.setFixedWidth(100)
+        self.update_btn.setFixedWidth(100), self.update_btn.setFont(QFont('Helvetica Neue', fs_font))
+        self.average_btn = QPushButton('Averaging', self)
+        self.average_btn.setFixedWidth(100), self.average_btn.setFont(QFont('Helvetica Neue', fs_font))
+        self.clear_btn = QPushButton('Clear', self)
+        self.clear_btn.setFixedWidth(100), self.clear_btn.setFont(QFont('Helvetica Neue', fs_font))
+        self.save_btn = QPushButton('Save', self)
+        self.save_btn.setFixedWidth(100), self.save_btn.setFont(QFont('Helvetica Neue', fs_font))
 
         # initiate tables of available core / sample profiles for all parameters
         self.tabula_O2, self.tabula_pH, self.tabula_H2S = self.Tablula(), self.Tablula(), self.Tablula()
@@ -5637,7 +5644,9 @@ class avProfilePage(QWizardPage):
 
         # add update button to the layout
         vbox_top.addWidget(self.update_btn)
-        # vbox_top.addWidget(self.average_btn)
+        vbox_top.addWidget(self.average_btn)
+        vbox_top.addWidget(self.clear_btn)
+        vbox_top.addWidget(self.save_btn)
 
         self.setLayout(mlayout2)
 
@@ -5649,72 +5658,188 @@ class avProfilePage(QWizardPage):
         tabula.adjustSize()
         return tabula
 
-    def fill_tabula(self):
-        #!!!TODO: make it more efficient
-        self.count = 0
-        ls_o2 = list()
-        [ls_o2.append(k) for k in results.keys() if 'O2' in k]
-        ls_pH = list()
-        [ls_pH.append(k) for k in results.keys() if 'pH' in k]
-        ls_H2S = list()
-        [ls_H2S.append(k) for k in results.keys() if 'H2S' in k]
-        ls_EP = list()
-        [ls_EP.append(k) for k in results.keys() if 'EP' in k]
+    def _getProfileLabels(self, para):
+        ls_par = list()
+        [ls_par.append(k) for k in results.keys() if para in k]
 
         # get information on group / profile-ID
-        if ls_o2:
-            dcoreO2 = dict(map(lambda c: (intLab(c), [i[0] for i in results[ls_o2[0]][c].keys()]), results[ls_o2[0]].keys()))
-        else:
-            dcoreO2 = None
-        if ls_pH:
-            dcorepH = dict(map(lambda c: (intLab(c), list(results[ls_pH[0]][c].keys())), results[ls_pH[0]].keys()))
-        if ls_H2S:
-            dcoreH2S = dict(map(lambda c: (intLab(c), list(results[ls_H2S[0]][c].keys())), results[ls_H2S[0]].keys()))
-        if ls_EP:
-            dcoreEP = dict(map(lambda c: (intLab(c), list(results[ls_EP[0]][c].keys())), results[ls_EP[0]].keys()))
+        dcore = None
+        if ls_par and para == 'O2':
+            dcore = dict()
+            for c in results[ls_par[0]].keys():
+                ls = list()
+                [ls.append(i[0]) if isinstance(i, tuple) else ls.append(i) for i in results[ls_par[0]][c].keys()]
+                dcore[intLab(c)] = ls
+        elif ls_par and para != 'O2':
+                dcore = dict(map(lambda c: (intLab(c), list(results[ls_par[0]][c].keys())), results[ls_par[0]].keys()))
+        return dcore
 
+    def _fill_tabula(self, dcore, tabula_par):
+        # get number of columns in table
+        new_row = tabula_par.rowCount()
+        x0 = new_row - 1
+        # check whether this (last) row is empty
+        item = tabula_par.item(x0, 0)
+        x = x0 if not item or not item.text() else x0 + 1
+
+        # add the number of rows according to keys in dictionary
+        nrows = np.sum([len(dcore[n]) for n in list(dcore.keys())])
+        tabula_par.setRowCount(nrows)
+
+        # actually fill the table
+        for k in dcore.keys():
+            itemGrp = QTableWidgetItem(str(k))
+            itemGrp.setTextAlignment(Qt.AlignRight)
+            for en, p in enumerate(dcore[k]):
+                item = QTableWidgetItem(str(p))
+                item.setTextAlignment(Qt.AlignRight)
+
+                # per default all profiles are used for averaging
+                itemSel = QTableWidgetItem(str('Y'))
+                itemSel.setTextAlignment(Qt.AlignRight)
+
+                # item structure: row, table, content
+                tabula_par.setItem(x, 0, itemGrp)   # fill in the group label information
+                tabula_par.setItem(x, 1, item)      # fill in the profile ID
+                tabula_par.setItem(x, 2, itemSel)   # fill in a default "Y" selection
+
+                # go to the next row
+                x += 1
+
+    def fill_tabula(self):
         # actually fill current table with information
-        if self.tabs_1.currentIndex() == 0 and dcoreO2:
-            print('O2 tab is open', dcoreO2)
-            # get number of columns in table
-            new_row = self.tabula_O2.rowCount()
-            x0 = new_row - 1
-            # check whether this (last) row is empty
-            item = self.tabula_O2.item(x0, 0)
-            x = x0 if not item or not item.text() else x0 + 1
-
-            # add the number of rows according to keys in dictionary
-            nrows = np.sum([len(dcoreO2[n]) for n in list(dcoreO2.keys())])
-            self.tabula_O2.setRowCount(nrows)
-
-            # actually fill the table
-            for k in dcoreO2.keys():
-                itemGrp = QTableWidgetItem(str(k))
-                itemGrp.setTextAlignment(Qt.AlignRight)
-                for en, p in enumerate(dcoreO2[k]):
-                    item = QTableWidgetItem(str(p))
-                    item.setTextAlignment(Qt.AlignRight)
-
-                    # per default all profiles are used for averaging
-                    itemSel = QTableWidgetItem(str('Y'))
-                    itemSel.setTextAlignment(Qt.AlignRight)
-
-                    # item structure: row, table, content
-                    self.tabula_O2.setItem(x, 0, itemGrp)
-                    self.tabula_O2.setItem(x, 1, item)
-                    self.tabula_O2.setItem(x, 2, itemSel)
-
-                    # go to the next row
-                    x += 1
-
-            self.tabula_O2.resizeColumnsToContents(), self.tabula_O2.resizeRowsToContents()
-
+        if self.tabs_1.currentIndex() == 0:
+            dcore = self._getProfileLabels(para='O2')
+            self.dcore['O2'] = dcore
+            if dcore:
+                self._fill_tabula(dcore=dcore, tabula_par=self.tabula_O2)
+                self.tabula_O2.resizeColumnsToContents(), self.tabula_O2.resizeRowsToContents()
         elif self.tabs_1.currentIndex() == 1:
-            print('pH tab is open')
+            dcore = self._getProfileLabels(para='pH')
+            self.dcore['pH'] = dcore
+            if dcore:
+                self._fill_tabula(dcore=dcore, tabula_par=self.tabula_pH)
+                self.tabula_pH.resizeColumnsToContents(), self.tabula_pH.resizeRowsToContents()
         elif self.tabs_1.currentIndex() == 2:
-            print('H2S tab is open')
+            dcore = self._getProfileLabels(para='H2S')
+            self.dcore['H2S'] = dcore
+            if dcore:
+                self._fill_tabula(dcore=dcore, tabula_par=self.tabula_H2S)
+                self.tabula_H2S.resizeColumnsToContents(), self.tabula_H2S.resizeRowsToContents()
         else:
-            print('EP tab is open')
+            dcore = self._getProfileLabels(para='EP')
+            self.dcore['EP'] = dcore
+            if dcore:
+                self._fill_tabula(dcore=dcore, tabula_par=self.tabula_EP)
+                self.tabula_EP.resizeColumnsToContents(), self.tabula_EP.resizeRowsToContents()
+
+    def averageRemains(self, col, k, dav_par, dav_):
+        if len(dav_.keys()) > 1:
+            df = pd.concat([dav_[i] for i in dav_.keys()], axis=1).astype(float)
+            dav_par[k] = df.mean(axis=1, skipna=True)
+        else:
+            dav_par[k] = pd.DataFrame(dav_[col])
+        return dav_par
+
+    def _getAverageProfile(self, searchK, ls_pop):
+        dav_par = dict()
+        for k in results[searchK].keys():
+            dav_par_ = dict()
+            for p in results[searchK][k].keys():
+                if isinstance(p, tuple):
+                    if p[0] not in ls_pop:
+                        col = p[0]
+                        dav_par_[col] = results[searchK][k][col]
+                else:
+                    if p not in ls_pop:
+                        col = p
+                        dav_par_[col] = results[searchK][k][col]
+
+            # average the remaining profiles
+            dav_par = self.averageRemains(col=col, k=k, dav_par=dav_par, dav_=dav_par_)
+        return dav_par
+
+    def exeAverageProfileTab(self, tab, searchK1, searchK2):
+        # get information which profiles to remove
+        ls_pop = list()
+        for c in range(tab.rowCount()):
+            if tab.item(c, 2).text() in ['N', 'n', '']:
+                ls_pop.append(int(tab.item(c, 1).text()))
+
+        # average remaining profiles (adjusted if in list else raw)
+        if searchK1 in list(results.keys()):
+            dav_par = self._getAverageProfile(searchK=searchK1, ls_pop=ls_pop)
+        else:
+            if searchK2 in list(results.keys()):
+                dav_par = self._getAverageProfile(searchK=searchK2, ls_pop=ls_pop)
+            else:
+                print('warning.... something missing here')
+                dav_par = None
+        return dav_par
+
+    def average_profiles(self):
+        global dav
+        if self.tabs_1.currentIndex() == 0:
+            dav_o2 = self.exeAverageProfileTab(tab=self.tabula_O2, searchK1='O2 profile', searchK2='O2 raw data')
+            dav['O2'] = dav_o2
+        if self.tabs_1.currentIndex() == 1:
+            dav_pH = self.exeAverageProfileTab(tab=self.tabula_O2, searchK1='pH adjusted',
+                                               searchK2='pH profile raw data')
+            dav['pH'] = dav_pH
+        if self.tabs_1.currentIndex() == 2:
+            dav_h2s = self.exeAverageProfileTab(tab=self.tabula_O2, searchK1='H2S adjusted',
+                                                searchK2='H2S profile raw data')
+            dav['H2S'] = dav_h2s
+        else:
+            dav_ep = self.exeAverageProfileTab(tab=self.tabula_O2, searchK1='EP adjusted', searchK2='EP raw data')
+            dav['EP'] = dav_ep
+
+        # return message to continue
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Information)
+        msgBox.setText("Averaging successful!  Please continue to the tab or the next sheet and select the parameters "
+                       "that shall be plotted together.")
+        msgBox.setFont(QFont('Helvetica Neue', 11))
+        msgBox.setWindowTitle("Great job!")
+        msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        msgBox.exec()
+
+    def save_avProfiles(self):
+        # make a project folder for the specific analyte if it doesn't exist
+        save_path = self.field("Storage path")
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
+        # make for each analyte a separate sheet
+        dout_av = dict()
+        for c in dav.keys():
+            if dav[c]:
+                dout_av[c] = pd.concat(dav[c], axis=1)
+
+        savename = dbs._actualFileName(savePath=save_path, file=self.field("Data"))
+        savename = savename.split('.')[0] + '_avProfiles.xlsx'
+
+        # actually saving DataFrame to excel
+        writer = pd.ExcelWriter(savename)
+        for key in dout_av.keys():
+            dout_av[key].to_excel(writer, sheet_name=key)
+        writer.save()
+        writer.close()
+
+    def reset_tabula(self):
+        global dav
+        dav = dict()
+        self.dcore = dict()
+
+        #!!!TODO: how to make it still reachable?
+        if self.tabs_1.currentIndex() == 0:
+            self.tabula_O2.clearContents()
+        elif self.tabs_1.currentIndex() == 1:
+            self.tabula_pH.clearContents()
+        elif self.tabs_1.currentIndex() == 2:
+            self.tabula_H2S.clearContents()
+        else:
+            self.tabula_EP.clearContents()
 
     def nextId(self) -> int:
         ls_para = list(self.field('next steps').split(','))
@@ -5732,9 +5857,277 @@ class jointPlotPage(QWizardPage):
         super(jointPlotPage, self).__init__(parent)
         self.setTitle("Joint plots of different parameters")
         self.setSubTitle("\n")
+        self.initUI()
+
+        # create required parameters
+        self.ls_jPlot = list()
+
+        # connect checkbox and load file button with a function
+        self.o2_bx.clicked.connect(self.paraCollection)
+        self.ph_bx.clicked.connect(self.paraCollection)
+        self.h2s_bx.clicked.connect(self.paraCollection)
+        self.ep_bx.clicked.connect(self.paraCollection)
+        self.spec_btn.clicked.connect(self.specifyGroups)
+        self.plot_btn.clicked.connect(self.plot_joProfile)
+        self.clear_btn.clicked.connect(self.clear_profile)
+        # self.save_btn.clicked.connect(self.save_jointProfiles)
+
+    def initUI(self):
+        # checkbox for which parameters shall be plotted together
+        self.o2_bx = QCheckBox('Oxygen O2', self)
+        self.ph_bx = QCheckBox('pH', self)
+        self.h2s_bx = QCheckBox('total sulfide ΣS2- / H2S', self)
+        self.ep_bx = QCheckBox('EP', self)
+        self.o2_bx.setFont(QFont('Helvetica Neue', 12)), self.ph_bx.setFont(QFont('Helvetica Neue', 12)),
+        self.h2s_bx.setFont(QFont('Helvetica Neue', 12)), self.ep_bx.setFont(QFont('Helvetica Neue', 12))
+
+        # open additional window to classify which cores shall be plotted together
+        self.spec_btn = QPushButton('Specify joint groups', self)
+        self.spec_btn.setFixedWidth(150), self.spec_btn.setFont(QFont('Helvetica Neue', fs_font))
+        self.plot_btn = QPushButton('Plot', self)
+        self.plot_btn.setFixedWidth(100), self.plot_btn.setFont(QFont('Helvetica Neue', fs_font))
+        self.clear_btn = QPushButton('Clear', self)
+        self.clear_btn.setFixedWidth(100), self.clear_btn.setFont(QFont('Helvetica Neue', fs_font))
+        self.save_btn = QPushButton('Save', self)
+        self.save_btn.setFixedWidth(100), self.save_btn.setFont(QFont('Helvetica Neue', fs_font))
+
+        # Slider for different cores and label on the right
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setMinimumWidth(350), self.slider.setFixedHeight(20)
+        self.sld_label = QLabel()
+        self.sld_label.setFixedWidth(55)
+        self.sld_label.setText('group: --')
+
+        # creating main window (GUI)
+        w = QWidget()
+        # create layout grid
+        mlayout = QVBoxLayout(w)
+        vbox_top, vbox_middle, vbox_bottom = QVBoxLayout(), QHBoxLayout(), QHBoxLayout()
+        mlayout.addLayout(vbox_top), mlayout.addLayout(vbox_middle), mlayout.addLayout(vbox_bottom)
+
+        btn_grp = QGroupBox()
+        grid_btn = QGridLayout()
+        btn_grp.setFont(QFont('Helvetica Neue', 12)), btn_grp.setFixedHeight(75)
+        btn_grp.setMinimumWidth(600)
+        vbox_top.addWidget(btn_grp)
+        btn_grp.setLayout(grid_btn)
+
+        # include widgets in the layout
+        grid_btn.addWidget(self.o2_bx, 0, 0)
+        grid_btn.addWidget(self.ph_bx, 0, 1)
+        grid_btn.addWidget(self.h2s_bx, 0, 2)
+        grid_btn.addWidget(self.ep_bx, 0, 3)
+
+        grid_btn.addWidget(self.spec_btn, 2, 0)
+        grid_btn.addWidget(self.plot_btn, 2, 1)
+        grid_btn.addWidget(self.clear_btn, 2, 2)
+        grid_btn.addWidget(self.save_btn, 2, 3)
+
+        # draw additional "line" to separate parameters from plots and to separate navigation from rest
+        vline = QFrame()
+        vline.setFrameShape(QFrame.HLine | QFrame.Raised)
+        vline.setLineWidth(2)
+        vbox_middle.addWidget(vline)
+
+        # plotting area
+        self.figJ, self.axJ = plt.subplots(figsize=(3, 4))
+        self.axJ1 = self.axJ.twiny()
+        self.canvasJ = FigureCanvasQTAgg(self.figJ)
+        self.axJ.set_ylabel('Depth / µm'), self.axJ.set_xlabel('analyte'), self.axJ1.set_xlabel('analyte 2')
+        self.axJ.invert_yaxis()
+        self.figJ.subplots_adjust(bottom=0.2, right=0.95, top=0.75, left=0.15)
+
+        JPlot_grp = QGroupBox("Joint depth profile")
+        JPlot_grp.setMinimumHeight(300)
+        grid_jPlot = QGridLayout()
+
+        # add GroupBox to layout and load buttons in GroupBox
+        vbox_bottom.addWidget(JPlot_grp)
+        JPlot_grp.setLayout(grid_jPlot)
+        grid_jPlot.addWidget(self.slider, 1, 0)
+        grid_jPlot.addWidget(self.sld_label, 1, 1)
+        grid_jPlot.addWidget(self.canvasJ, 2, 0)
+        self.setLayout(mlayout)
+
+    def paraCollection(self):
+        if self.o2_bx.isChecked():
+            self.ls_jPlot.append('O2')
+        if self.ph_bx.isChecked():
+            self.ls_jPlot.append('pH')
+        if self.h2s_bx.isChecked():
+            self.ls_jPlot.append('H2S')
+        if self.ep_bx.isChecked():
+            self.ls_jPlot.append('EP')
+        self.ls_jPlot = list(dict.fromkeys(self.ls_jPlot))
+
+    def clear_profile(self):
+        self.axJ.cla(), self.axJ1.cla()
+        self.axJ.set_ylabel('Depth / µm'), self.axJ.set_xlabel('analyte'), self.axJ1.set_xlabel('analyte 2')
+        self.axJ.invert_yaxis()
+        self.figJ.subplots_adjust(bottom=0.2, right=0.95, top=0.75, left=0.15)
+
+        # deselect all parameters
+        self.o2_bx.setChecked(False), self.ph_bx.setChecked(False)
+        self.h2s_bx.setChecked(False), self.ep_bx.setChecked(False)
+
+        # re-create (empty) required parameters
+        self.ls_jPlot = list()
+
+    def _getParaGroups(self):
+        lsGrp1, lsGrp2, lsGrp3, lsGrp4 = None, None, None, None #list(), list(), list(), list()
+        for p in self.ls_jPlot:
+            lsGrp = list(dav[p].keys())
+            if p == 'O2':
+                lsGrp1 = lsGrp
+            elif p == 'pH':
+                lsGrp2 = lsGrp
+            elif p == 'H2S':
+                lsGrp3 = lsGrp
+            elif p == 'EP':
+                lsGrp4 = lsGrp
+        return lsGrp1, lsGrp2, lsGrp3, lsGrp4
+
+    def specifyGroups(self):
+        # get the group labels of each selected parameter (maximum four parameters)
+        lsGrp1, lsGrp2, lsGrp3, lsGrp4 = self._getParaGroups()
+
+        # open new window and have a click collection for each profile of the first parameter
+        global wSpecGp, tabcorr
+        wSpecGp = specGroup(lsGrp1, lsGrp2, lsGrp3, lsGrp4, self.ls_jPlot, tabcorr)
+        if wSpecGp.isVisible():
+            pass
+        else:
+            wSpecGp.show()
+
+    def plot_joProfile(self):
+        self.ls_jPlot = list(dict.fromkeys(self.ls_jPlot))
+
+        if len(self.ls_jPlot) <= 2:
+            self.axJ.set_xlabel(self.ls_jPlot[0]), self.axJ1.set_xlabel(self.ls_jPlot[1])
+        elif len(self.ls_jPlot) == 3:
+            # one additional axis
+            self.axJ2 = self.axJ.twiny()
+            self.axJ.set_xlabel(self.ls_jPlot[0]), self.axJ1.set_xlabel(self.ls_jPlot[1])
+            self.axJ2.set_xlabel(self.ls_jPlot[2])
+        else:
+            # two additional axes
+            self.axJ2, self.axJ3 = self.axJ.twiny(), self.axJ1.twiny()
+            self.axJ.set_xlabel(self.ls_jPlot[0]), self.axJ1.set_xlabel(self.ls_jPlot[1])
+            self.axJ2.set_xlabel(self.ls_jPlot[2]), self.axJ4.set_xlabel(self.ls_jPlot[3])
+
+        self.axJ.set_ylabel('Depth / µm'), self.axJ.invert_yaxis()
+        self.figJ.subplots_adjust(bottom=0.2, right=0.95, top=0.75, left=0.15)
+        self.figJ.canvas.draw()
 
     def nextId(self) -> int:
         return wizard_page_index['final page']
+
+
+class specGroup(QDialog):
+    def __init__(self, lsGrp1, lsGrp2, lsGrp3, lsGrp4, ls_jPlot, tab_corr):
+        super().__init__()
+
+        # setting title
+        self.setWindowTitle("Correlation of group profiles")
+        self.setGeometry(800, 100, 500, 450)
+
+        # getting the parameter
+        self.lsCore1, self.lsCore2, self.lsCore3, self.lsCore4 = lsGrp1, lsGrp2, lsGrp3, lsGrp4
+        self.tab_corr, self.ls_para = tab_corr, ls_jPlot
+
+        # calling method
+        self.initUI()
+
+        # connect checkbox and load file button with a function
+        self.ok_button.clicked.connect(self.close)
+        self.clear_button.clicked.connect(self.clear)
+
+    def initUI(self):
+        # calibration of one core applied to all others -> select core
+        self.ok_button = QPushButton('OK', self)
+        self.ok_button.setFixedWidth(100)
+        self.clear_button = QPushButton('Clear', self)
+        self.clear_button.setFixedWidth(100)
+
+        # initiate table of available parameters
+        self.tabCorr = self.Tablula()
+
+        # creating window layout
+        w = QWidget()
+        mlayout2 = QVBoxLayout(w)
+        vbox_top, vbox_middle, vbox_bottom = QHBoxLayout(), QVBoxLayout(), QVBoxLayout()
+        mlayout2.addLayout(vbox_top), mlayout2.addLayout(vbox_middle), mlayout2.addLayout(vbox_bottom)
+
+        # add items to the layout grid
+        MsgGp = QGroupBox()
+        MsgGp.setFont(QFont('Helvetica Neue', 12))
+        gridMsg = QGridLayout()
+        vbox_top.addWidget(MsgGp)
+        MsgGp.setLayout(gridMsg)
+
+        # add GroupBox to layout and load buttons in GroupBox
+        gridMsg.addWidget(self.tabCorr, 0, 0)
+
+        # draw additional "line" to separate parameters from plots and to separate navigation from rest
+        vline = QFrame()
+        vline.setFrameShape(QFrame.HLine | QFrame.Raised)
+        vline.setLineWidth(2)
+        vbox_middle.addWidget(vline)
+
+        # add items to the layout grid
+        NavGp = QGroupBox()
+        NavGp.setFont(QFont('Helvetica Neue', 12))
+        gridNav = QGridLayout()
+        vbox_bottom.addWidget(NavGp)
+        NavGp.setLayout(gridNav)
+
+        gridNav.addWidget(self.ok_button, 0, 1)
+        gridNav.addWidget(self.clear_button, 0, 2)
+
+        # add everything to the window layout
+        self.setLayout(mlayout2)
+
+    def Tablula(self):
+        # get RowCount as maximum of available groups
+        rows = np.max([len(self.lsCore1 or ''), len(self.lsCore2 or ''), len(self.lsCore3 or ''),
+                       len(self.lsCore4 or '')])
+
+        # get the options for each parameter
+        para1 = sorted([str(s) for s in self.lsCore1]) if isinstance(self.lsCore1, list) else ['--']
+        para2 = sorted([str(s) for s in self.lsCore2]) if isinstance(self.lsCore2, list) else ['--']
+        para3 = sorted([str(s) for s in self.lsCore3]) if isinstance(self.lsCore3, list) else ['--']
+        para4 = sorted([str(s) for s in self.lsCore4]) if isinstance(self.lsCore4, list) else ['--']
+
+        # create table
+        tabula = QTableWidget(self)
+        tabula.setColumnCount(4), tabula.setRowCount(rows)
+        tabula.setHorizontalHeaderLabels(['O2', 'pH', 'total sulfide ΣS2- / H2S', 'EP'])
+
+        # fill table items with combo boxes
+        for index in range(rows):
+            combo1, combo2, combo3, combo4 = QComboBox(), QComboBox(), QComboBox(), QComboBox()
+            [combo1.addItem(t) for t in para1]
+            tabula.setCellWidget(index, 0, combo1)
+
+            [combo2.addItem(t) for t in para2]
+            tabula.setCellWidget(index, 1, combo2)
+
+            [combo3.addItem(t) for t in para3]
+            tabula.setCellWidget(index, 2, combo3)
+
+            [combo4.addItem(t) for t in para4]
+            tabula.setCellWidget(index, 3, combo4)
+
+        tabula.resizeRowsToContents(), tabula.adjustSize()
+        return tabula
+
+    def clear(self):
+        # clear the table
+        self.tabCorr.clearContents()
+
+    def close(self):
+        self.hide()
+        self.tab_corr = self.tabCorr
 
 
 # -----------------------------------------------

@@ -951,7 +951,10 @@ def _actualFileName(savePath, file=None, clabel='output', rlabel='run'):
         for f in ls_folder:
             if '-' + rlabel in f.split('_')[0]:
                 ls_addstr.append(int(f.split('-' + rlabel)[1].split('_')[0]) + 1)
-        addstr = f.split(rlabel)[0] + rlabel + str(max(ls_addstr)) + '_'
+        if ls_addstr:
+            addstr = f.split(rlabel)[0] + rlabel + str(max(ls_addstr)) + '_'
+        else:
+            addstr = f.split(rlabel)[0] + rlabel + str(0) + '_'
     else:
         addstr = clabel + "-" + rlabel + str(0) + "_"
     if file:
