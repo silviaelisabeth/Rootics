@@ -1899,8 +1899,7 @@ class phPage(QWizardPage):
         sns.despine()
 
         pH_group = QGroupBox("pH depth profile")
-        # pH_group.setMinimumWidth(250), \
-        pH_group.setMinimumHeight(300)
+        pH_group.setMinimumHeight(350)
         grid_pH = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -2984,7 +2983,7 @@ class h2sPage(QWizardPage):
             else:
                 corr = 0.
                 corepH1 = _findCoreLabel(option1=corepH, option2=int(corepH.split(' ')[1]), ls=results['pH adjusted'])
-            xold = results['pH adjusted'][corepH1][sample].index + corr
+            xold = results['pH adjusted'][corepH1][sample].index
             pH_coreS = pd.DataFrame(results['pH adjusted'][corepH1][sample]['pH'])
             pH_coreS.index = xold
             # elif int(corepH.split(' ')[1]) in results['pH swi depth'].keys():
@@ -4003,8 +4002,9 @@ def plot_H2SProfile(data_H2S, core, ls_core, col, dobj_hidH2S, ls='-.', scale=No
                 alpha_ = .0 if 'sample ' + str(nr) in dobj_hidH2S[labCore] else .6
             else:
                 alpha_ = .6
-            #print(para)
-            #print(data_H2S[labCore][nr])
+
+            if para not in data_H2S[labCore][nr].columns:
+                para = data_H2S[labCore][nr].filter(like='H2S').columns[0]
             df = data_H2S[labCore][nr][para].dropna()
             mark = '.' if ls == '-.' else None
             lw = .75 if ls == '-.' else 1.
@@ -4171,6 +4171,10 @@ def GUI_adjustDepthH2S(core, nr, dfCore, scale, col, pH=None, pHnr=None, pH_core
     for en in enumerate(dfCore.keys()):
         if en[1] == nr:
             pos = en[0]
+    if col in dfCore[nr].keys():
+        pass
+    else:
+        col = 'H2S_µM'
     ax.plot(dfCore[nr][col], dfCore[nr].index, lw=0.75, ls='-.', marker='.', ms=4, color=ls_col[pos], alpha=0.75)
 
     if pH:
@@ -5539,7 +5543,7 @@ class charPage(QWizardPage):
         self.av_box = QCheckBox('Average depth profiles per core', self)
         self.av_box.setFont(QFont('Helvetica Neue', 12))
 
-        self.jointPlot_box = QCheckBox('joint plot of parameters', self)
+        self.jointPlot_box = QCheckBox('Joint plot of parameters', self)
         self.jointPlot_box.setFont(QFont('Helvetica Neue', 12))
 
         # creating window layout
@@ -5733,10 +5737,23 @@ class avProfilePage(QWizardPage):
                 self._fill_tabula(dcore=dcore, tabula_par=self.tabula_EP)
                 self.tabula_EP.resizeColumnsToContents(), self.tabula_EP.resizeRowsToContents()
 
-    def averageRemains(self, col, k, dav_par, dav_):
+    def _specifyFilter(self, analyte):
+        if 'O2' in analyte:
+            filter_ = 'Concentration (µmol/l)'
+        elif 'pH' in analyte:
+            filter_ = 'pH'
+        elif 'H2S' in analyte:
+            filter_ = 'H2S_µM'
+        elif 'EP' in analyte:
+            filter_ = 'EP_mV'
+        else:
+            filter_ = None
+        return filter_
+
+    def averageRemains(self, analyte, col, k, dav_par, dav_):
         if len(dav_.keys()) > 1:
             df = pd.concat([dav_[i] for i in dav_.keys()], axis=1).astype(float)
-            dav_par[k] = df.mean(axis=1, skipna=True)
+            dav_par[k] = df[self._specifyFilter(analyte=analyte)].mean(axis=1, skipna=True)
         else:
             dav_par[k] = pd.DataFrame(dav_[col])
         return dav_par
@@ -5756,7 +5773,7 @@ class avProfilePage(QWizardPage):
                         dav_par_[col] = results[searchK][k][col]
 
             # average the remaining profiles
-            dav_par = self.averageRemains(col=col, k=k, dav_par=dav_par, dav_=dav_par_)
+            dav_par = self.averageRemains(analyte=searchK, col=col, k=k, dav_par=dav_par, dav_=dav_par_)
         return dav_par
 
     def exeAverageProfileTab(self, tab, searchK1, searchK2):
@@ -5773,7 +5790,6 @@ class avProfilePage(QWizardPage):
             if searchK2 in list(results.keys()):
                 dav_par = self._getAverageProfile(searchK=searchK2, ls_pop=ls_pop)
             else:
-                print('warning.... something missing here')
                 dav_par = None
         return dav_par
 
@@ -5869,6 +5885,7 @@ class jointPlotPage(QWizardPage):
         self.ep_bx.clicked.connect(self.paraCollection)
         self.spec_btn.clicked.connect(self.specifyGroups)
         self.plot_btn.clicked.connect(self.plot_joProfile)
+        self.adj_btn.clicked.connect(self.adjust_profile)
         self.clear_btn.clicked.connect(self.clear_profile)
         # self.save_btn.clicked.connect(self.save_jointProfiles)
 
@@ -5886,6 +5903,8 @@ class jointPlotPage(QWizardPage):
         self.spec_btn.setFixedWidth(150), self.spec_btn.setFont(QFont('Helvetica Neue', fs_font))
         self.plot_btn = QPushButton('Plot', self)
         self.plot_btn.setFixedWidth(100), self.plot_btn.setFont(QFont('Helvetica Neue', fs_font))
+        self.adj_btn = QPushButton('Adjust', self)
+        self.adj_btn.setFixedWidth(150), self.adj_btn.setFont(QFont('Helvetica Neue', fs_font))
         self.clear_btn = QPushButton('Clear', self)
         self.clear_btn.setFixedWidth(100), self.clear_btn.setFont(QFont('Helvetica Neue', fs_font))
         self.save_btn = QPushButton('Save', self)
@@ -5908,7 +5927,7 @@ class jointPlotPage(QWizardPage):
         btn_grp = QGroupBox()
         grid_btn = QGridLayout()
         btn_grp.setFont(QFont('Helvetica Neue', 12)), btn_grp.setFixedHeight(75)
-        btn_grp.setMinimumWidth(600)
+        btn_grp.setMinimumWidth(650)
         vbox_top.addWidget(btn_grp)
         btn_grp.setLayout(grid_btn)
 
@@ -5920,8 +5939,9 @@ class jointPlotPage(QWizardPage):
 
         grid_btn.addWidget(self.spec_btn, 2, 0)
         grid_btn.addWidget(self.plot_btn, 2, 1)
-        grid_btn.addWidget(self.clear_btn, 2, 2)
-        grid_btn.addWidget(self.save_btn, 2, 3)
+        grid_btn.addWidget(self.adj_btn, 2, 2)
+        grid_btn.addWidget(self.clear_btn, 2, 3)
+        grid_btn.addWidget(self.save_btn, 2, 4)
 
         # draw additional "line" to separate parameters from plots and to separate navigation from rest
         vline = QFrame()
@@ -5938,7 +5958,7 @@ class jointPlotPage(QWizardPage):
         self.figJ.subplots_adjust(bottom=0.2, right=0.95, top=0.75, left=0.15)
 
         JPlot_grp = QGroupBox("Joint depth profile")
-        JPlot_grp.setMinimumHeight(300)
+        JPlot_grp.setMinimumHeight(500)
         grid_jPlot = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -5960,19 +5980,6 @@ class jointPlotPage(QWizardPage):
             self.ls_jPlot.append('EP')
         self.ls_jPlot = list(dict.fromkeys(self.ls_jPlot))
 
-    def clear_profile(self):
-        self.axJ.cla(), self.axJ1.cla()
-        self.axJ.set_ylabel('Depth / µm'), self.axJ.set_xlabel('analyte'), self.axJ1.set_xlabel('analyte 2')
-        self.axJ.invert_yaxis()
-        self.figJ.subplots_adjust(bottom=0.2, right=0.95, top=0.75, left=0.15)
-
-        # deselect all parameters
-        self.o2_bx.setChecked(False), self.ph_bx.setChecked(False)
-        self.h2s_bx.setChecked(False), self.ep_bx.setChecked(False)
-
-        # re-create (empty) required parameters
-        self.ls_jPlot = list()
-
     def _getParaGroups(self):
         lsGrp1, lsGrp2, lsGrp3, lsGrp4 = None, None, None, None #list(), list(), list(), list()
         for p in self.ls_jPlot:
@@ -5992,48 +5999,122 @@ class jointPlotPage(QWizardPage):
         lsGrp1, lsGrp2, lsGrp3, lsGrp4 = self._getParaGroups()
 
         # open new window and have a click collection for each profile of the first parameter
-        global wSpecGp, tabcorr
-        wSpecGp = specGroup(lsGrp1, lsGrp2, lsGrp3, lsGrp4, self.ls_jPlot, tabcorr)
+        global wSpecGp
+        wSpecGp = specGroup(lsGrp1, lsGrp2, lsGrp3, lsGrp4, self.ls_jPlot)
         if wSpecGp.isVisible():
             pass
         else:
             wSpecGp.show()
 
+    def adjust_profile(self):
+        print('make trimming of yaxis and xaxis scaling for individual parameter possible')
+
     def plot_joProfile(self):
+        # clear all previous plots in figure
+        [ax.cla() for ax in self.figJ.axes]
+        self.axJ.invert_yaxis()
+
+        # get the profiles and correlation matrix for the different parameters
+        global tabcorr, grp_label
         self.ls_jPlot = list(dict.fromkeys(self.ls_jPlot))
+        # create a template of the figure including required additional axes
+        self.templateFigure()
+        ls_axes = self.figJ.axes # axes labels: 0: O2, 1: pH, 2: EP, 3: H2S
+        self.removeIdleAxes(ls_axes)
 
-        if len(self.ls_jPlot) <= 2:
-            self.axJ.set_xlabel(self.ls_jPlot[0]), self.axJ1.set_xlabel(self.ls_jPlot[1])
-        elif len(self.ls_jPlot) == 3:
-            # one additional axis
-            self.axJ2 = self.axJ.twiny()
-            self.axJ.set_xlabel(self.ls_jPlot[0]), self.axJ1.set_xlabel(self.ls_jPlot[1])
-            self.axJ2.set_xlabel(self.ls_jPlot[2])
-        else:
-            # two additional axes
-            self.axJ2, self.axJ3 = self.axJ.twiny(), self.axJ1.twiny()
-            self.axJ.set_xlabel(self.ls_jPlot[0]), self.axJ1.set_xlabel(self.ls_jPlot[1])
-            self.axJ2.set_xlabel(self.ls_jPlot[2]), self.axJ4.set_xlabel(self.ls_jPlot[3])
+        # get the slider value, e.g. specify the profile to be plotted
+        sval = self.slider.value()
 
-        self.axJ.set_ylabel('Depth / µm'), self.axJ.invert_yaxis()
-        self.figJ.subplots_adjust(bottom=0.2, right=0.95, top=0.75, left=0.15)
+        # fill the axes with averaged profiles
+        em = 0
+        for en, para in enumerate(self.ls_jPlot):
+            em += en
+            self.sld_label.setText('{}: {}'.format(grp_label, tabcorr[self.ls_jPlot[0]].to_numpy()))
+            # !!! Make sure the counting / parameter to axes arrangement is correct - it isn't right now (en)
+            print(para)
+            pkeys = tabcorr[para].to_numpy()
+            print(dav[para][pkeys[sval]].min(), dav[para][pkeys[sval]].max())
+            if para == 'H2S':
+                ls_axes[en+1].plot(dav[para][pkeys[sval]].values, dav[para][pkeys[sval]].index, lw=0., marker='.',
+                                 color=ls_col[em])
+                ls_axes[en+1].xaxis.label.set_color(ls_col[em])
+            elif para == 'EP':
+                ls_axes[en-1].plot(dav[para][pkeys[sval]].values, dav[para][pkeys[sval]].index, lw=0., marker='.',
+                                 color=ls_col[em])
+                ls_axes[en-1].xaxis.label.set_color(ls_col[em])
+            else:
+                ls_axes[en].plot(dav[para][pkeys[sval]].values, dav[para][pkeys[sval]].index, lw=0., marker='.',
+                                 color=ls_col[em])
+                ls_axes[en].xaxis.label.set_color(ls_col[em])
+
+            ls_axes[en].axhline(0, color='k', lw=0.5)
+        self.axJ.invert_yaxis(), self.figJ.tight_layout()
         self.figJ.canvas.draw()
+
+    def removeIdleAxes(self, ls_axes):
+        if 'O2' not in self.ls_jPlot:
+            ls_axes[0].set_axis_off()
+        if 'pH' not in self.ls_jPlot:
+            ls_axes[1].set_axis_off()
+        if 'EP' not in self.ls_jPlot:
+            ls_axes[2].set_axis_off()
+        if 'H2S' not in self.ls_jPlot:
+            ls_axes[3].set_axis_off()
+
+    def templateFigure(self):
+        # always have four axes but remove axes that are not needed. That way, you make sure that the same parameter is
+        # always at the same position
+        ls_axes = self.figJ.axes
+        ls_axes[0].set_xlabel('O2 concentration / µmol/L', fontsize=fs_, color='k')  # O2 at bottom axes
+        ls_axes[1].set_xlabel('pH', fontsize=fs_, color='k')  # pH at top axes
+
+        if len(ls_axes) <= 2:
+            self.axJ2, self.axJ3 = self.axJ.twiny(), self.axJ.twiny()
+            self.axJ2.set_xlabel('EP / mV', fontsize=fs_, color='k')  # EP at bottom axes
+            self.axJ3.set_xlabel('total sulfide or H2S / µmol/L', fontsize=fs_, color='k')  # H2S at top axes
+
+            # make positioning of (additional) axes right
+            self.axJ2.spines["top"].set_position(("axes", 1.25))
+            makePatchSpinesInVis(ax=self.axJ2), makePatchSpinesInVis(ax=self.axJ3)
+
+            self.axJ3.xaxis.set_ticks_position('bottom'), self.axJ3.xaxis.set_label_position('bottom')
+            self.axJ3.spines['bottom'].set_position(('outward', 36))
+
+            self.axJ2.spines["top"].set_visible(True), self.axJ3.spines["bottom"].set_visible(True)
+        self.axJ1.spines["top"].set_visible(True), self.axJ.spines["bottom"].set_visible(True)
+
+        # layout and final drawing
+        self.axJ.set_ylabel('Depth / µm'), self.axJ.invert_yaxis()
+        self.figJ.tight_layout(pad=1.5) #subplots_adjust(bottom=0.25, right=0.95, top=0.75, left=0.15)
+        self.figJ.canvas.draw()
+
+    def clear_profile(self):
+        [ax.cla() for ax in self.figJ.axes]
+        self.templateFigure()
+        self.figJ.canvas.draw()
+
+        # deselect all parameters
+        self.o2_bx.setChecked(False), self.ph_bx.setChecked(False)
+        self.h2s_bx.setChecked(False), self.ep_bx.setChecked(False)
+
+        # re-create (empty) required parameters
+        self.ls_jPlot = list()
 
     def nextId(self) -> int:
         return wizard_page_index['final page']
 
 
 class specGroup(QDialog):
-    def __init__(self, lsGrp1, lsGrp2, lsGrp3, lsGrp4, ls_jPlot, tab_corr):
+    def __init__(self, lsGrp1, lsGrp2, lsGrp3, lsGrp4, ls_jPlot):
         super().__init__()
 
         # setting title
         self.setWindowTitle("Correlation of group profiles")
-        self.setGeometry(800, 100, 500, 450)
+        self.setGeometry(800, 100, 500, 500)
 
         # getting the parameter
         self.lsCore1, self.lsCore2, self.lsCore3, self.lsCore4 = lsGrp1, lsGrp2, lsGrp3, lsGrp4
-        self.tab_corr, self.ls_para = tab_corr, ls_jPlot
+        self.ls_para = ls_jPlot
 
         # calling method
         self.initUI()
@@ -6092,31 +6173,31 @@ class specGroup(QDialog):
         rows = np.max([len(self.lsCore1 or ''), len(self.lsCore2 or ''), len(self.lsCore3 or ''),
                        len(self.lsCore4 or '')])
 
+        # create table
+        tabula = QTableWidget(self)
+        tabula.setColumnCount(4), tabula.setRowCount(rows)
+        tabula.setHorizontalHeaderLabels(['O2', 'pH', 'total sulfide ΣS2- / H2S', 'EP'])
+
         # get the options for each parameter
         para1 = sorted([str(s) for s in self.lsCore1]) if isinstance(self.lsCore1, list) else ['--']
         para2 = sorted([str(s) for s in self.lsCore2]) if isinstance(self.lsCore2, list) else ['--']
         para3 = sorted([str(s) for s in self.lsCore3]) if isinstance(self.lsCore3, list) else ['--']
         para4 = sorted([str(s) for s in self.lsCore4]) if isinstance(self.lsCore4, list) else ['--']
 
-        # create table
-        tabula = QTableWidget(self)
-        tabula.setColumnCount(4), tabula.setRowCount(rows)
-        tabula.setHorizontalHeaderLabels(['O2', 'pH', 'total sulfide ΣS2- / H2S', 'EP'])
-
         # fill table items with combo boxes
         for index in range(rows):
-            combo1, combo2, combo3, combo4 = QComboBox(), QComboBox(), QComboBox(), QComboBox()
-            [combo1.addItem(t) for t in para1]
-            tabula.setCellWidget(index, 0, combo1)
+            self.combo1, self.combo2, self.combo3, self.combo4 = QComboBox(), QComboBox(), QComboBox(), QComboBox()
+            [self.combo1.addItem(t) for t in para1]
+            tabula.setCellWidget(index, 0, self.combo1)
 
-            [combo2.addItem(t) for t in para2]
-            tabula.setCellWidget(index, 1, combo2)
+            [self.combo2.addItem(t) for t in para2]
+            tabula.setCellWidget(index, 1, self.combo2)
 
-            [combo3.addItem(t) for t in para3]
-            tabula.setCellWidget(index, 2, combo3)
+            [self.combo3.addItem(t) for t in para3]
+            tabula.setCellWidget(index, 2, self.combo3)
 
-            [combo4.addItem(t) for t in para4]
-            tabula.setCellWidget(index, 3, combo4)
+            [self.combo4.addItem(t) for t in para4]
+            tabula.setCellWidget(index, 3, self.combo4)
 
         tabula.resizeRowsToContents(), tabula.adjustSize()
         return tabula
@@ -6126,8 +6207,18 @@ class specGroup(QDialog):
         self.tabCorr.clearContents()
 
     def close(self):
+        # fill the dataframe
+        tab_corr = pd.DataFrame(columns=['O2', 'pH', 'H2S', 'EP'], index=range(self.tabCorr.rowCount()))
+        for i in range(self.tabCorr.rowCount()):
+            for en, j in enumerate(tab_corr.columns):
+                choice = self.tabCorr.cellWidget(i, en).currentText()
+                tab_corr.loc[i, j] = choice if choice == '--' else int(choice)
+        # store dataframe in global variable
+        global tabcorr
+        tabcorr = tab_corr
+
+        # close the window
         self.hide()
-        self.tab_corr = self.tabCorr
 
 
 # -----------------------------------------------
@@ -6347,6 +6438,13 @@ def checkDatavsPara(sheet_select, par):
         msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         msgBox.exec()
     return checked
+
+
+def makePatchSpinesInVis(ax):
+    ax.set_frame_on(True)
+    ax.patch.set_visible(False)
+    for sp in ax.spines.values():
+        sp.set_visible(False)
 
 
 # ---------------------------------------------------------------------------------------------------------------------

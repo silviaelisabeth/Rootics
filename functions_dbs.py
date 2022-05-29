@@ -485,8 +485,8 @@ def precheckMeta(ls_cols):
 def precheckCorrelation(ls_cols):
     # pH and H2S correlation sheet
     if 'Correlation' not in ls_cols and 'correlation' not in ls_cols:
-        print('Warning - if total sulfide shall be calculated, profive an additional correlation sheet as described in '
-              'the manual.')
+        # print('Warning - if total sulfide shall be calculated, profive an additional correlation sheet as described in '
+        #       'the manual.')
         col = None
     else:
         col = 'Correlation' if 'Correlation' in ls_cols else 'correlation'
@@ -942,10 +942,10 @@ def _actualFolderName(savePath, cfolder, rlabel='run'):
 
 
 def _actualFileName(savePath, file=None, clabel='output', rlabel='run'):
+    print(savePath)
     # check whether file exist already in folder
     ls_folder = next(walk(savePath), (None, None, []))[2]  # [] if no file
 
-    addstr = ''
     if ls_folder:
         ls_addstr = list()
         for f in ls_folder:
@@ -961,7 +961,7 @@ def _actualFileName(savePath, file=None, clabel='output', rlabel='run'):
         savename = savePath + '/' + addstr + file.split('/')[-1]
     else:
         savename = savePath + '/' + addstr
-
+    print(savename)
     # compatibility mode
     if savename.split('.')[1] != 'xlsx':
         savename = savename.split('.')[0] + '.xlsx'
@@ -972,6 +972,7 @@ def save_rawExcel(dout, file, savePath):
     savename = _actualFileName(savePath=savePath, file=file, clabel='output', rlabel='run')
 
     # actually saving DataFrame to excel
+    print('savename', 975, savename)
     writer = pd.ExcelWriter(savename)
     for key in dout.keys():
         dout[key].to_excel(writer, sheet_name=key)
