@@ -448,6 +448,18 @@ def _gompertz_curve(x, a, b, c):
     return y
 
 
+def _gompertz_curve_adv(x, a, b, c, d):
+    """ Gompertz curve to describe a positive s-shaped curve with the following parameter:
+    :param x:
+    :param a:   maximal x-level
+    :param b:   shift along x-axis
+    :param c:   slope
+    :return:
+    """
+    y = a * (np.exp(-1 * np.exp(b - c * x))-1) + d
+    return y
+
+
 # --------------------------------------------------------------------------------------------------------------------
 def loadMeas4GUI(file):
     # load sheets from excel file
@@ -1072,34 +1084,41 @@ def _split2Samples(dsens, df_meta, s):
     return df
 
 
-def fit_baseline(ls_core, ls_nr, dic_dcore, steps, gmod):
+def fit_baseline(ls_core, ls_nr, dic_dcore, steps, gmod, adv):
     dfit, dic_deriv = dict(), dict()
     for core in ls_core:
         dfit_, dic_deriv_ = dict(), dict()
         for nr in ls_nr[core]:
             [res, df_fit, df_fitder, df_fitder2,
-             xshift] = baseline_finder(dic_dcore=dic_dcore, core=core, nr=nr, steps=steps, model=gmod)
+             xshift] = baseline_finder(dic_dcore=dic_dcore, core=core, nr=nr, steps=steps, model=gmod, adv=adv)
             dfit_[nr], dic_deriv_[nr] = (res, df_fit, xshift), (df_fitder, df_fitder2)
         dfit[core] = dfit_
         dic_deriv[core] = dic_deriv_
     return dfit, dic_deriv
 
 
-def baseline_finder(dic_dcore, core, nr, steps, model):
+def baseline_finder(dic_dcore, core, nr, steps, model, adv):
     # curve fit according to selected model
     xdata = dic_dcore[core][nr].index
     c = 'O2_mV' if 'O2' in dic_dcore[core][nr].columns else dic_dcore[core][nr].columns[0]
     ydata = dic_dcore[core][nr][c]
 
     # initial parameters
-    para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001)
+    if adv is True:
+        para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001,
+                                 d=-int(ydata.loc[xdata[-3:]].mean()))
+    else:
+        para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001)
     res = model.fit(ydata.to_numpy(), para, x=xdata)
 
     # ................................................................
     # 1st derivative
     arg = [res.params[p].value for p in res.params.keys()]
     xnew = np.linspace(xdata[0], xdata[-1], num=int((xdata[-1]-xdata[0])/steps+1))
-    yfit = _gompertz_curve(x=xnew, a=arg[0], b=arg[1], c=arg[2])
+    if adv is True:
+        yfit = _gompertz_curve_adv(x=xnew, a=arg[0], b=arg[1], c=arg[2], d=arg[3])
+    else:
+        yfit = _gompertz_curve(x=xnew, a=arg[0], b=arg[1], c=arg[2])
 
     df_fit = pd.DataFrame(yfit, index=xnew)
     df_fitder = df_fit.diff()
@@ -1115,26 +1134,32 @@ def baseline_finder(dic_dcore, core, nr, steps, model):
         pass
     else:
         print('Warning! Extreme point for core {}-sample {} might not be a real point of inflection'.format(core, nr))
-        xshift = xturn
 
     return res, df_fit, df_fitder, df_fitder2, xshift
 
 
-def baseline_finder_DF(dic_dcore, steps, model):
+def baseline_finder_DF(dic_dcore, steps, model, adv):
     # curve fit according to selected model
     xdata = dic_dcore.index
     c = 'O2_mV' if 'O2' in dic_dcore.columns else dic_dcore.columns[0]
     ydata = dic_dcore[c]
 
     # initial parameters
-    para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001)
+    if adv is True:
+        para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001,
+                                 d=-int(ydata.loc[xdata[-3:]].mean()))
+    else:
+        para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=.001, c=.001)
     res = model.fit(ydata.to_numpy(), para, x=xdata)
 
     # ................................................................
     # 1st derivative
     arg = [res.params[p].value for p in res.params.keys()]
     xnew = np.linspace(xdata[0], xdata[-1], num=int((xdata[-1]-xdata[0])/steps+1))
-    yfit = _gompertz_curve(x=xnew, a=arg[0], b=arg[1], c=arg[2])
+    if adv is True:
+        yfit = _gompertz_curve_adv(x=xnew, a=arg[0], b=arg[1], c=arg[2], d=arg[3])
+    else:
+        yfit = _gompertz_curve(x=xnew, a=arg[0], b=arg[1], c=arg[2])
 
     df_fit = pd.DataFrame(yfit, index=xnew)
     df_fitder = df_fit.diff()
@@ -1152,13 +1177,12 @@ def baseline_shift(dic_dcore, dfit):
     return data_shift
 
 
-def _calcO2penetration(dO2_core, O2_pen, unit, steps, gmod):
+def _calcO2penetration(dO2_core, O2_pen, unit, steps, gmod, adv):
     dcore_pen, dcore_fig = dict(), dict()
     for core in dO2_core.keys():
         dic_pen, dfig_pen = dict(), dict()
         for s in dO2_core[core].keys():
-            df_fit = penetration_depth(df=dO2_core[core][s[0]].dropna(), O2_pen=O2_pen, unit=unit, steps=steps,
-                                       model=gmod)
+            df_fit = penetration_depth(df=dO2_core[core][s[0]].dropna(), unit=unit, steps=steps, model=gmod, adv=adv)
             dic_pen[str(s[0]) + '-Fit'] = df_fit
             [fig, depth_pen] = plot_penetrationDepth(core=core, s=s[0], df_fit=df_fit, O2_pen=O2_pen, unit=unit,
                                                      show=False)
@@ -1184,19 +1208,26 @@ def _calcO2penetration(dO2_core, O2_pen, unit, steps, gmod):
     return dcore_pen, dcore_fig, dpen_all
 
 
-def penetration_depth(df, unit, O2_pen, steps, model):
+def penetration_depth(df, unit, steps, model, adv):
     xdata = df.index
     ydata = df['O2_' + unit]
 
     # initial parameters
-    para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=-.0001, c=0.002)
+    if adv is True:
+        para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=-.0001, c=0.002,
+                                 d=-int(ydata.loc[xdata[-3:]].mean()))
+    else:
+        para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=-.0001, c=0.002)
     res = model.fit(ydata.to_numpy(), para, x=xdata)
 
     # ................................................................
     # 1st derivative
     arg = [res.params[p].value for p in res.params.keys()]
     xnew = np.linspace(xdata[0], xdata[-1], num=int((xdata[-1]-xdata[0])/steps+1))
-    yfit = _gompertz_curve(x=xnew, a=arg[0], b=arg[1], c=arg[2])
+    if adv is True:
+        yfit = _gompertz_curve_adv(x=xnew, a=arg[0], b=arg[1], c=arg[2], d=arg[3])
+    else:
+        yfit = _gompertz_curve(x=xnew, a=arg[0], b=arg[1], c=arg[2])
 
     df_fit = pd.DataFrame(yfit, index=xnew)
 
@@ -1361,8 +1392,8 @@ def dissolvedO2_calc(T, salinity):
     return (0, dO2_max)
 
 
-def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µmol/L', lim=150, steps=0.5,
-                    plot_inter=False):
+def O2_depthProfile(file, file_calib, temp_degC, adv, salinity=0, O2_pen=5, unit='µmol/L', lim_min=120, lim=-5,
+                    steps=0.5, plot_inter=False):
     """
 
     :param file:
@@ -1382,7 +1413,10 @@ def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µm
     sheet_select = sheetname_check(dsheets)
 
     # pre-set of parameters
-    gmod = Model(_gompertz_curve)  # define model for curve fit
+    if adv is True:
+        gmod = Model(_gompertz_curve_adv)  # define model for curve fit
+    else:
+        gmod = Model(_gompertz_curve)  # define model for curve fit
     dO2_core, dfilter, dhiden_object, dpen_all, dfig_pen, dfig = dict(), dict(), dict(), dict(), dict(), dict()
 
     # ----------------------------------------------------------------------------------
@@ -1390,13 +1424,13 @@ def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µm
     ls_core = list(dict.fromkeys(dsheets[sheet_select].set_index('Nr')['Core'].to_numpy()))
 
     # import all measurements for given parameter
-    dic_dcore, ls_nr = load_measurements(dsheets=dsheets, ls_core=ls_core, para='O2_all')
+    dic_dcore, ls_nr, ls_name = load_measurements(dsheets=dsheets, ls_core=ls_core, para='O2_all')
 
     # curve fit and baseline finder
-    dfit, dic_deriv = fit_baseline(ls_core=ls_core, ls_nr=ls_nr, dic_dcore=dic_dcore, steps=steps, gmod=gmod)
+    dfit, dic_deriv = fit_baseline(ls_core=ls_core, ls_nr=ls_nr, dic_dcore=dic_dcore, steps=steps, gmod=gmod, adv=adv)
 
     # baseline shift
-    data_shift = baseline_shift(dic_dcore=dic_dcore, dic_deriv=dic_deriv)
+    data_shift = baseline_shift(dic_dcore=dic_dcore, dfit=dfit)
 
     # plotting interim results
     dfig = plot_interimsteps(dfit=dfit, dic_dcore=dic_dcore, dic_deriv=dic_deriv, ls_core=ls_core,
@@ -1410,13 +1444,13 @@ def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µm
     o2_dis = defO2calib(dtab_sal=dtab_sal, unit=unit, temp=temp_degC, sal=salinity)
 
     # convert O2 potential into concentration
-    dO2_core = O2converter4conc(data_shift, o2_dis, unit)
+    dO2_core = O2converter4conc(data_shift, o2_dis, lim_min, lim, unit)
 
     # -----------------------------------------------------------------------------------
     # penetration depth
     # determine penetration depth - store individual samples in plot but don't show them (yet)
     dcore_pen, dcore_fig, dpen_all = _calcO2penetration(dO2_core=dO2_core, O2_pen=O2_pen, unit=unit, steps=steps,
-                                                        gmod=gmod)
+                                                        gmod=gmod, adv=adv)
 
     # one figure for all samples of the same core - de-check the curves you don't want to add to the averaging process
     # in legend
@@ -1427,8 +1461,9 @@ def O2_depthProfile(file, file_calib, temp_degC, salinity=0, O2_pen=5, unit='µm
         dfig[core], dax[core] = fig, ax
 
     for core in dcore_pen.keys():
-        fig1, ax1 = plot_indicate_penetration(core=core, dhiden_object=dhiden_object, unit=unit, dpen_all=dpen_all,
-                                              dcore_pen=dcore_pen, dO2_core=dO2_core, ax=dax[core], fig=dfig[core])
+        fig1, ax1, dpen_all = plot_indicate_penetration(dcore_pen=dcore_pen, dO2_core=dO2_core, core=core, ax=dax[core],
+                                                        dhiden_object=dhiden_object, unit=unit, dpen_all=dpen_all,
+                                                        fig=dfig[core])
         dfig_pen[core] = fig1
 
     # -----------------------------------------------------------------------------------

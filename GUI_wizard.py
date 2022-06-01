@@ -724,7 +724,7 @@ class o2Page(QWizardPage):
 
     def sigmoidalFit(self, ddata, sheet_select):
         # pre-set of parameters
-        gmod = Model(dbs._gompertz_curve)
+        gmod = Model(dbs._gompertz_curve_adv)
 
         # ----------------------------------------------------------------------------------
         # list all available cores for O2 sheet
@@ -746,7 +746,8 @@ class o2Page(QWizardPage):
             results['O2 raw data'][c] = ddic
 
         # curve fit and baseline finder
-        dfit, dic_deriv = dbs.fit_baseline(ls_core=ls_core, ls_nr=ls_nr, dic_dcore=dic_dcore, steps=steps, gmod=gmod)
+        dfit, dic_deriv = dbs.fit_baseline(ls_core=ls_core, ls_nr=ls_nr, dic_dcore=dic_dcore, steps=steps, gmod=gmod,
+                                           adv=True)
         results['O2 fit'], results['O2 derivative'] = dfit, dic_deriv
 
         return ls_core, ls_colname, gmod, dic_dcore, dic_deriv, dfit
@@ -1344,8 +1345,8 @@ class FitWindow(QDialog):
         return dcore_crop
 
     def reFit(self, dcore_crop):
-        gmod = Model(dbs._gompertz_curve)
-        res, df_fit_crop, df_fitder = dbs.baseline_finder_DF(dic_dcore=dcore_crop, steps=steps, model=gmod)
+        gmod = Model(dbs._gompertz_curve_adv)
+        res, df_fit_crop, df_fitder = dbs.baseline_finder_DF(dic_dcore=dcore_crop, steps=steps, model=gmod, adv=True)
 
         # update red.chi2
         self.chi2.setText('Goodness of fit (reduced χ2): ' + str(round(res.redchi, 3)))
@@ -1701,8 +1702,8 @@ def GUI_calcO2penetration(O2_pen, unit, steps, gmod):
     for core in dO2_core.keys():
         dic_pen, dfig_pen = dict(), dict()
         for s in dO2_core[core].keys():
-            df_fit = dbs.penetration_depth(df=dO2_core[core][s[0]].dropna(), O2_pen=O2_pen, unit=unit, steps=steps,
-                                           model=gmod)
+            df_fit = dbs.penetration_depth(df=dO2_core[core][s[0]].dropna(), unit=unit, steps=steps, model=gmod,
+                                           adv=True)
             dic_pen[str(s[0]) + '-Fit'] = df_fit
             [fig, depth_pen] = dbs.plot_penetrationDepth(core=core, s=s[0], df_fit=df_fit, O2_pen=O2_pen, unit=unit,
                                                          show=False)
