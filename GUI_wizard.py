@@ -40,7 +40,7 @@ ls_allData = ['meta data', 'raw data', 'fit_mV', 'adjusted data', 'penetration d
 grp_label = None                    # global definition of group label
 
 # color list for samples: grey, orange, petrol, green, yellow, light grey, blue
-ls_col = list(['#4c5558', '#eb9032', '#21a0a8', '#9ec759', '#f9d220', '#96a6ab', '#1B08AA', '#40A64A', '#D20D41',
+ls_col = list(['#4c5558', '#eb9032', '#21a0a8', '#f9d220', '#9ec759', '#96a6ab', '#1B08AA', '#40A64A', '#D20D41',
                '#E87392'])
 ls_figtype = ['png']
 dpi = 300
@@ -663,7 +663,10 @@ class o2Page(QWizardPage):
 
     def load_O2data(self):
         # raw measurement file pre-processed and saved per default as rawData file
-        dsheets = _loadGlobData(file_str=self.field("Data"))
+        dsheets, dignore = _loadGlobData(file_str=self.field("Data"))
+        for k in dignore.keys():
+            if 'O2' in dignore[k].keys():
+                l = k
 
         # pre-check whether O2_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='O2')
@@ -673,14 +676,17 @@ class o2Page(QWizardPage):
             #  prepare file depending on the type
             ddata = dsheets[sheet_select].set_index('Nr')
 
+            # remove excluded profiles
+            ddata_update = _excludeProfiles(analyt='O2', dignore=dignore[l], ddata=ddata)
+
             global grp_label
             if grp_label is None:
-                grp_label = ddata.columns[0]
+                grp_label = ddata_update.columns[0]
         else:
             # reset page as nothing was found
             self.reset_o2page()
             return None, None
-        return ddata, sheet_select, checked
+        return ddata_update, sheet_select, checked
 
     def continue_process(self):
         # store relevant information
@@ -1922,7 +1928,10 @@ class phPage(QWizardPage):
 
     def load_pHdata(self):
         # raw measurement file pre-processed and saved per default as rawData file
-        dsheets = _loadGlobData(file_str=self.field("Data"))
+        dsheets, dignore = _loadGlobData(file_str=self.field("Data"))
+        for k in dignore.keys():
+            if 'pH' in dignore[k].keys():
+                l = k
 
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='pH')
@@ -1931,16 +1940,20 @@ class phPage(QWizardPage):
         if checked is True:
             #  prepare file depending on the type
             ddata = dsheets[sheet_select].set_index('Nr')
+
+            # remove excluded profiles
+            ddata_update = _excludeProfiles(analyt='pH', dignore=dignore[l], ddata=ddata)
+
             global grp_label
             if grp_label is None:
-                grp_label = ddata.columns[0]
+                grp_label = ddata_update.columns[0]
 
             # list all available cores for pH sheet
-            self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
+            self.ls_core = list(dict.fromkeys(ddata_update[ddata_update.columns[0]]))
 
             # import all measurements for given parameter
             [dpH_core, ls_nr,
-             self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
+             self.ls_colname] = dbs.load_measurements(dsheets=ddata_update, ls_core=self.ls_core, para=sheet_select)
             results['pH profile raw data'], results['pH adjusted'] = dpH_core, dpH_core.copy()
         else:
             # reset page as nothing was found
@@ -2781,7 +2794,10 @@ class h2sPage(QWizardPage):
 
     def load_H2Sdata(self):
         # raw measurement file pre-processed and saved per default as rawData file
-        dsheets = _loadGlobData(file_str=self.field("Data"))
+        dsheets, dignore = _loadGlobData(file_str=self.field("Data"))
+        for k in dignore.keys():
+            if 'H2S' in dignore[k].keys():
+                l = k
 
         # pre-check whether pH_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='H2S')
@@ -2790,16 +2806,20 @@ class h2sPage(QWizardPage):
         if checked is True:
             #  prepare file depending on the type
             ddata = dsheets[sheet_select].set_index('Nr')
+
+            # remove excluded profiles
+            ddata_update = _excludeProfiles(analyt='H2S', dignore=dignore[l], ddata=ddata)
+
             global grp_label
             if grp_label is None:
-                grp_label = ddata.columns[0]
+                grp_label = ddata_update.columns[0]
 
             # list all available cores for pH sheet
-            self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]].to_numpy()))
+            self.ls_core = list(dict.fromkeys(ddata_update[ddata_update.columns[0]].to_numpy()))
 
             # import all measurements for given parameter
             [self.dH2S_core, ls_nr,
-             self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
+             self.ls_colname] = dbs.load_measurements(dsheets=ddata_update, ls_core=self.ls_core, para=sheet_select)
             results['H2S adjusted'] = self.dH2S_core
 
             # separate storage of raw data
@@ -3004,7 +3024,33 @@ class h2sPage(QWizardPage):
         else:
             corepH = _findCoreLabel(option1=corepH, option2=int(corepH.split(' ')[1]), ls=results['pH adjusted'])
             if corepH:
-                pH_coreS = results['pH adjusted'][corepH][sample]['pH']
+                if corepH not in results['pH adjusted'].keys():
+                    msgBox = QMessageBox()
+                    msgBox.setIcon(QMessageBox.Warning)
+                    msgBox.setText("Information missing how to correlate pH and H2S sensor profiles. The requested pH"
+                                   "profile {} was not found".format(corepH))
+                    msgBox.setFont(QFont('Helvetica Neue', 11))
+                    msgBox.setWindowTitle("Warning")
+                    msgBox.setStandardButtons(QMessageBox.Ok)
+
+                    returnValue = msgBox.exec()
+                    if returnValue == QMessageBox.Ok:
+                        pass
+                else:
+                    if sample not in results['pH adjusted'][corepH].keys():
+                        msgBox = QMessageBox()
+                        msgBox.setIcon(QMessageBox.Warning)
+                        msgBox.setText("Information missing how to correlate pH and H2S sensor profiles. The requested "
+                                       "pH profile {} was not found".format(sample))
+                        msgBox.setFont(QFont('Helvetica Neue', 11))
+                        msgBox.setWindowTitle("Warning")
+                        msgBox.setStandardButtons(QMessageBox.Ok)
+
+                        returnValue = msgBox.exec()
+                        if returnValue == QMessageBox.Ok:
+                            pass                                
+                    else:
+                        pH_coreS = results['pH adjusted'][corepH][sample]['pH']
             else:
                 pH_coreS = None
         return pH_coreS
@@ -4374,8 +4420,13 @@ class epPage(QWizardPage):
 
     def load_EPdata(self):
         # raw measurement file pre-processed and saved per default as rawData file
-        dsheets = _loadGlobData(file_str=self.field("Data"))
+        dsheets, dignore = _loadGlobData(file_str=self.field("Data"))
         self.dsheets = dsheets
+
+        for k in dignore.keys():
+            if 'EP' in dignore[k].keys():
+                l = k
+
 
         # pre-check whether EP_all in sheet names
         sheet_select = dbs.sheetname_check(dsheets, para='EP')
@@ -4384,16 +4435,20 @@ class epPage(QWizardPage):
         if checked is True:
             #  prepare file depending on the type
             ddata = dsheets[sheet_select].set_index('Nr')
+
+            # remove excluded profiles
+            ddata_update = _excludeProfiles(analyt='EP', dignore=dignore[l], ddata=ddata)
+
             global grp_label
             if grp_label is None:
-                grp_label = ddata.columns[0]
+                grp_label = ddata_update.columns[0]
 
             # list all available cores for pH sheet (in timely order, e.g., not ordered in ascending/ descending order)
-            self.ls_core = list(dict.fromkeys(ddata[ddata.columns[0]]))
+            self.ls_core = list(dict.fromkeys(ddata_update[ddata_update.columns[0]]))
 
             # import all measurements for given parameter
             [self.dEP_core, ls_nr,
-             self.ls_colname] = dbs.load_measurements(dsheets=ddata, ls_core=self.ls_core, para=sheet_select)
+             self.ls_colname] = dbs.load_measurements(dsheets=ddata_update, ls_core=self.ls_core, para=sheet_select)
 
             # order depth index ascending
             self.dEP_core = dict(map(lambda c: (c, dict(map(lambda s: (s, self.dEP_core[c][s].sort_index(ascending=True)),
@@ -5199,7 +5254,7 @@ class DriftWindow(QDialog):
 
         # update slider position and label
         self.nP = min(self.dorder.keys(), key=lambda x: abs(x - self.sliderTD.value()))
-        self.sldTD_label.setText('group: {}'.format(self.nP))
+        self.sldTD_label.setText('group: {}'.format(int(self.nP)))
 
         # re-draw figure
         self.dataDP[self.nP] = dbs._getProfileStack(nP=self.nP, dataEP=self.ddata, dorder=self.dorder)
@@ -5237,7 +5292,7 @@ class DriftWindow(QDialog):
         nmax = np.max([self.axTD.get_ylim()[1], np.max(pd.concat(dfP2_, axis=0)['EP_mV'].to_numpy())])
 
         self.axTD.set_ylim(nmin, nmax)
-        self.axTD.set_title(''), self.figTD.suptitle('EP drift corrected profile for group {}'.format(self.nP))
+        self.axTD.set_title(''), self.figTD.suptitle('EP drift corrected profile for group {}'.format(int(self.nP)))
         self.figTD.canvas.draw()
 
         # plot fit results
@@ -5959,7 +6014,7 @@ class jointPlotPage(QWizardPage):
         self.ls_jPlot = list(dict.fromkeys(self.ls_jPlot))
 
     def _getParaGroups(self):
-        lsGrp1, lsGrp2, lsGrp3, lsGrp4 = None, None, None, None #list(), list(), list(), list()
+        lsGrp1, lsGrp2, lsGrp3, lsGrp4 = None, None, None, None
         for p in self.ls_jPlot:
             lsGrp = list(dav[p].keys())
             if p == 'O2':
@@ -5986,44 +6041,83 @@ class jointPlotPage(QWizardPage):
 
     def adjust_profile(self):
         print('make trimming of yaxis and xaxis scaling for individual parameter possible')
+        global wAdj_jP
+        wAdj_jP = AdjustjPWindow()
+        if wAdj_jP.isVisible():
+            pass
+        else:
+            wAdj_jP.show()
+
+    def slider_update(self):
+        global tabcorr
+        # allow only discrete values according to existing cores
+        grp_select = min(np.arange(0, len(tabcorr.index)), key=lambda x: abs(x - self.slider.value()))
+
+        # update slider position and label
+        self.slider.setValue(int(grp_select))
+        self.sld_label.setText('group: {}'.format(grp_select))
+        self._plot_joProfile1Core(sval=grp_select)
+        self.figJ.canvas.draw()
 
     def plot_joProfile(self):
+        global tabcorr
+        # slider initialized to first core
+        self.slider.setMinimum(0), self.slider.setMaximum(int(len(tabcorr.index)-1))
+        self.slider.setValue(0)
+        self.sld_label.setText('group: {}'.format(0))
+
+        # plot initial joint plot for group 0
+        self._plot_joProfile1Core(sval=self.slider.value())
+
+        # when slider value change (on click), return new value and update figure plot
+        self.slider.valueChanged.connect(self.slider_update)
+
+        # in case the FitWindow is open -> update figFit according to selected sliderValue
+        # self.slider.sliderReleased.connect(self.wFit_update)
+        self.figJ.canvas.draw()
+
+    def _plot_joProfile1Core(self, sval):
         # clear all previous plots in figure
         [ax.cla() for ax in self.figJ.axes]
         self.axJ.invert_yaxis()
 
         # get the profiles and correlation matrix for the different parameters
-        global tabcorr, grp_label
+        global tabcorr
         self.ls_jPlot = list(dict.fromkeys(self.ls_jPlot))
+
         # create a template of the figure including required additional axes
         self.templateFigure()
         ls_axes = self.figJ.axes # axes labels: 0: O2, 1: pH, 2: EP, 3: H2S
+        # remove surplus axes
         self.removeIdleAxes(ls_axes)
-
-        # get the slider value, e.g. specify the profile to be plotted
-        sval = self.slider.value()
 
         # fill the axes with averaged profiles
         em = 0
         for en, para in enumerate(self.ls_jPlot):
             em += en
-            self.sld_label.setText('{}: {}'.format(grp_label, tabcorr[self.ls_jPlot[0]].to_numpy()[0]))
+            self.sld_label.setText('group: {}'.format(sval))
             # !!! Make sure the counting / parameter to axes arrangement is correct - it isn't right now (en)
             pkeys = tabcorr[para].to_numpy()
             colK = _findCoreLabel(option1=pkeys[sval], option2='core {}'.format(pkeys[sval]), ls=list(dav[para].keys()))
 
             if para == 'H2S':
-                ls_axes[en+1].plot(dav[para][colK].values, dav[para][colK].index, lw=0., marker='.', color=ls_col[em])
-                ls_axes[en+1].xaxis.label.set_color(ls_col[em])
+                ls_axes[en+1].plot(dav[para][colK].values, dav[para][colK].index, lw=0.75, color=ls_col[em])
+                ls_axes[en+1].xaxis.label.set_color(ls_col[em]), ls_axes[en+1].tick_params(axis='x', colors=ls_col[em])
             elif para == 'EP':
-                ls_axes[en-1].plot(dav[para][colK].values, dav[para][colK].index, lw=0., marker='.', color=ls_col[em])
-                ls_axes[en-1].xaxis.label.set_color(ls_col[em])
+                ls_axes[en-1].plot(dav[para][colK].values, dav[para][colK].index, lw=0.75, color=ls_col[em])
+                ls_axes[en-1].xaxis.label.set_color(ls_col[em]), ls_axes[en-1].tick_params(axis='x', colors=ls_col[em])
             else:
-                ls_axes[en].plot(dav[para][colK].values, dav[para][colK].index, lw=0., marker='.', color=ls_col[em])
-                ls_axes[en].xaxis.label.set_color(ls_col[em])
+                ls_axes[en].plot(dav[para][colK].values, dav[para][colK].index, lw=0.75, color=ls_col[em])
+                ls_axes[en].xaxis.label.set_color(ls_col[em]), ls_axes[en].tick_params(axis='x', colors=ls_col[em])
 
             ls_axes[en].axhline(0, color='k', lw=0.5)
-        self.axJ.invert_yaxis(), self.figJ.tight_layout()
+
+        # make it a pretty layout
+        if len(ls_axes) > 2:
+            self.layout4Axes()
+
+        self.axJ.invert_yaxis()
+        self.figJ.subplots_adjust(bottom=0.25, right=0.9, top=0.7, left=0.15)
         self.figJ.canvas.draw()
 
     def removeIdleAxes(self, ls_axes):
@@ -6036,35 +6130,42 @@ class jointPlotPage(QWizardPage):
         if 'H2S' not in self.ls_jPlot:
             ls_axes[3].set_axis_off()
 
+    def layout4Axes(self):
+        self.axJ2.set_xlabel('EP / mV', fontsize=fs_, color='k', labelpad=15)  # EP at additional bottom axes
+        self.axJ3.set_xlabel('total sulfide or H2S / µmol/L', fontsize=fs_, color='k')  # H2S at additional top axes
+
+        # make positioning of (additional) axes right
+        self.axJ2.spines["top"].set_position(("axes", 1.25))
+        makePatchSpinesInVis(ax=self.axJ2), makePatchSpinesInVis(ax=self.axJ3)
+
+        self.axJ3.xaxis.set_ticks_position('bottom'), self.axJ3.xaxis.set_label_position('bottom')
+        self.axJ3.spines['bottom'].set_position(('outward', 36))
+
+        self.axJ2.spines["top"].set_visible(True), self.axJ3.spines["bottom"].set_visible(True)
+
     def templateFigure(self):
-        # always have four axes but remove axes that are not needed. That way, you make sure that the same parameter is
-        # always at the same position
+        # always four axes but remove axes the ones that are not needed. That way, you make sure that the same parameter
+        # is always at the same position
         ls_axes = self.figJ.axes
         ls_axes[0].set_xlabel('O2 concentration / µmol/L', fontsize=fs_, color='k')  # O2 at bottom axes
         ls_axes[1].set_xlabel('pH', fontsize=fs_, color='k')  # pH at top axes
 
         if len(ls_axes) <= 2:
             self.axJ2, self.axJ3 = self.axJ.twiny(), self.axJ.twiny()
-            self.axJ2.set_xlabel('EP / mV', fontsize=fs_, color='k')  # EP at bottom axes
-            self.axJ3.set_xlabel('total sulfide or H2S / µmol/L', fontsize=fs_, color='k')  # H2S at top axes
-
-            # make positioning of (additional) axes right
-            self.axJ2.spines["top"].set_position(("axes", 1.25))
-            makePatchSpinesInVis(ax=self.axJ2), makePatchSpinesInVis(ax=self.axJ3)
-
-            self.axJ3.xaxis.set_ticks_position('bottom'), self.axJ3.xaxis.set_label_position('bottom')
-            self.axJ3.spines['bottom'].set_position(('outward', 36))
-
-            self.axJ2.spines["top"].set_visible(True), self.axJ3.spines["bottom"].set_visible(True)
+            self.layout4Axes()
         self.axJ1.spines["top"].set_visible(True), self.axJ.spines["bottom"].set_visible(True)
+        self.axJ.spines["top"].set_visible(True), self.axJ1.spines["bottom"].set_visible(True)
 
         # layout and final drawing
         self.axJ.set_ylabel('Depth / µm'), self.axJ.invert_yaxis()
-        self.figJ.tight_layout(pad=1.5) #subplots_adjust(bottom=0.25, right=0.95, top=0.75, left=0.15)
+        self.figJ.tight_layout(pad=1.5) # subplots_adjust(bottom=0.25, right=0.95, top=0.75, left=0.15)
         self.figJ.canvas.draw()
 
     def clear_profile(self):
         [ax.cla() for ax in self.figJ.axes]
+        for ax in self.figJ.axes:
+            [t.set_color('k') for t in ax.xaxis.get_ticklines()]
+            [t.set_color('k') for t in ax.xaxis.get_ticklabels()]
         self.templateFigure()
         self.figJ.canvas.draw()
 
@@ -6203,12 +6304,35 @@ class specGroup(QDialog):
         self.hide()
 
 
+class AdjustjPWindow(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle("Adjust individual profiles")
+        self.setGeometry(650, 50, 600, 300) # x-position, y-position, width, height
+
+        # add description about how to use this window (slider, outlier detection, cropping area)
+        self.msg = QLabel("Use the tab to switch between analytes belonging to the selected group. \nYou can trim the "
+                          "data range: press CONTROL/COMMAND + select min/max or you can adjust the general depth shown"
+                          "in the plot. \nAt the end,  update the plot by pressing the button UPDATE")
+
+        self.msg.setWordWrap(True)
+
+        self.close_button = QPushButton('Fit OK', self)
+        self.close_button.setFixedWidth(100)
+        self.adjust_button = QPushButton('adjust data', self)
+        self.adjust_button.setFixedWidth(100)
+
+
 # -----------------------------------------------
 class FinalPage(QWizardPage):
     def __init__(self, parent=None):
         super(FinalPage, self).__init__(parent)
         self.setTitle("Final page")
-        self.setSubTitle("Thanks for visiting.")
+        self.setSubTitle("Thanks for visiting.\n\n"
+                         "Tak for besøget.")
 
 
 # -----------------------------------------------
@@ -6363,8 +6487,24 @@ def _loadGlobData(file_str):
     else:
         ls_file = list(file_str)
 
+    # get meta data file
+    dmeta_ = dict(map(lambda f: (f[0], pd.read_excel(f[1], sheet_name=None)), enumerate(ls_file)))
+    dignore = dict()
+    for f in dmeta_.keys():
+        if 'Metadata' in dmeta_[f].keys():
+            dfmeta = dmeta_[f]['Metadata']
+        elif 'metadata' in dmeta_[f].keys():
+            dfmeta = dmeta_[f]['metadata']
+        else:
+            print('warning - no meta file found!')
+            dfmeta = None
+
+        # get the profiles that shall be excluded
+        dignore[f] = dict(map(lambda p: (p, dfmeta[dfmeta[p].isnull()]), dfmeta.columns[2:]))
+
     # load excel sheet with all measurements
     ls_dsheets = dict(map(lambda f: (f[0], dbs.loadMeas4GUI(file=f[1])), enumerate(ls_file)))
+
     dsheets = ls_dsheets[0]
     for en in range(len(ls_file)-1):
         dsheets = merge(dsheets, ls_dsheets[en+1])
@@ -6374,7 +6514,7 @@ def _loadGlobData(file_str):
     if bool(dcol_label) is False:
         for a in dsheets.keys():
             dcol_label[a] = list(dsheets[a].columns[2:])
-    return dsheets
+    return dsheets, dignore
 
 
 def _findCoreLabel(option1, option2, ls):
@@ -6427,6 +6567,38 @@ def makePatchSpinesInVis(ax):
     ax.patch.set_visible(False)
     for sp in ax.spines.values():
         sp.set_visible(False)
+
+
+def _excludeProfiles(analyt, dignore, ddata):
+    # get the deployment (ID) and code information
+    hide_nr = dignore[analyt]['deployment'].to_numpy()
+    hide_code = dignore[analyt]['code'].to_numpy()
+
+    l = 0
+    for en, i in enumerate(list(dict.fromkeys(list(ddata.index)))):
+        if i in hide_nr:
+            # position of i in hide_nr
+            for em, j in enumerate(hide_nr):
+                if j == i:
+                    k = em
+            # double-check code
+            chid = _findCoreLabel(option1=hide_code[k], option2=int(hide_code[k].split(' ')[1]),
+                                  ls=ddata.loc[i, ddata.columns[0]].to_numpy())
+            if chid not in list(dict.fromkeys(list(ddata.loc[i, ddata.columns[0]]))):
+                if l == 0:
+                    ddata_update = ddata.loc[i]
+                else:
+                    ddata_update2 = ddata.loc[i]
+                    ddata_update = pd.concat([ddata_update, ddata_update2], axis=0)
+            l += 1
+        else:
+            if l == 0:
+                ddata_update = ddata.loc[i]
+            else:
+                ddata_update2 = ddata.loc[i]
+                ddata_update = pd.concat([ddata_update, ddata_update2], axis=0)
+            l += 1
+    return ddata_update
 
 
 # ---------------------------------------------------------------------------------------------------------------------
