@@ -19,6 +19,7 @@ import pandas as pd
 from lmfit import Model
 from scipy import stats
 import time
+from datetime import datetime
 import PyPDF2
 import h5py
 from os import walk
@@ -796,7 +797,7 @@ def _loadFile4GUI(file):
     return dout
 
 
-def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, salinity=None, pene2=None):
+def prep4saveRes(dout, results, dpenStat, typeCalib=None, o2_dis=None, temperature=None, salinity=None, pene2=None):
     # handle raw profiles to one dataframe results['raw data']
     if 'O2 raw data' in results.keys():
         dcore_raw = dict()
@@ -840,26 +841,30 @@ def prep4saveRes(dout, results, typeCalib=None, o2_dis=None, temperature=None, s
 
     # handle penetration depth - results['penetration depth']
     if 'O2 penetration depth' in results.keys():
-        ddata = results['O2 penetration depth']
-        dpen = dict()
-        for c in ddata.keys():
-            ls_rel = list()
-            [ls_rel.append(k) for k in list(ddata[c].keys()) if 'penetration' in k]
-            df = pd.DataFrame([ddata[c][k] for k in ls_rel], index=[int(i.split('-')[0]) for i in ls_rel],
-                              columns=['mean', 'std'])
+        df = dict(map(lambda k: (k, pd.DataFrame(dpenStat[k])), dpenStat.keys()))
+        ddf = pd.concat(df, axis=1)
+        col_new = ddf.columns.levels[0]
+        ddf.columns = col_new
 
-            # add mark for excluded objects
-            df.loc[:, 'outlier'] = [None] * len(df.index)
-            if c in results['O2 hidden objects'].keys():
-                for s in results['O2 hidden objects'][c]:
-                    df.loc[int(s.split('-')[-1]), 'outlier'] = 'X'
-
-            # add average penetration depth for core
-            df.loc['average', :] = df[df['outlier'] != 'X'].mean().values
-
-            # add all samples of the core to the penetration dictionary and the general output dictionary
-            dpen[c] = df
-        dout['penetration depth'] = pd.concat(dpen, axis=0)
+        # ddata = results['O2 penetration depth']
+        # dpen = dict()
+        # for c in ddata.keys():
+        #     ls_rel = list()
+        #     [ls_rel.append(k) for k in list(ddata[c].keys()) if 'penetration' in k]
+        #     df = pd.DataFrame([ddata[c][k] for k in ls_rel], index=[int(i.split('-')[0]) for i in ls_rel],
+        #                       columns=['mean', 'std'])
+            # # add mark for excluded objects
+            # df.loc[:, 'outlier'] = [None] * len(df.index)
+            # if c in results['O2 hidden objects'].keys():
+            #     for s in results['O2 hidden objects'][c]:
+            #         df.loc[int(s.split('-')[-1]), 'outlier'] = 'X'
+            #
+            # # add average penetration depth for core
+            # df.loc['average', :] = df[df['outlier'] != 'X'].mean().values
+            #
+            # # add all samples of the core to the penetration dictionary and the general output dictionary
+            # dpen[c] = df
+        dout['penetration depth'] = ddf # pd.concat(dpen, axis=0)
 
     # meta data
     if typeCalib:
@@ -954,26 +959,28 @@ def _actualFolderName(savePath, cfolder, rlabel='run'):
 
 
 def _actualFileName(savePath, file=None, clabel='output', rlabel='run'):
-    print(savePath)
     # check whether file exist already in folder
     ls_folder = next(walk(savePath), (None, None, []))[2]  # [] if no file
 
+    now = datetime.now().strftime("%Y%d%m-%H:%M:%S")
+    addstr = now
     if ls_folder:
         ls_addstr = list()
         for f in ls_folder:
-            if '-' + rlabel in f.split('_')[0]:
-                ls_addstr.append(int(f.split('-' + rlabel)[1].split('_')[0]) + 1)
-        if ls_addstr:
-            addstr = f.split(rlabel)[0] + rlabel + str(max(ls_addstr)) + '_'
-        else:
-            addstr = f.split(rlabel)[0] + rlabel + str(0) + '_'
+            if '~' not in f:
+                if '-' + rlabel in f.split('_')[0]:
+                    ls_addstr.append(int(f.split('-' + rlabel)[1].split('_')[0]) + 1)
+                    if ls_addstr:
+                        addstr = f.split(rlabel)[0] + rlabel + str(max(ls_addstr)) + '_'
+                    else:
+                        addstr = f.split(rlabel)[0] + rlabel + str(0) + '_'
     else:
         addstr = clabel + "-" + rlabel + str(0) + "_"
     if file:
         savename = savePath + '/' + addstr + file.split('/')[-1]
     else:
         savename = savePath + '/' + addstr
-    print(savename)
+
     # compatibility mode
     if savename.split('.')[1] != 'xlsx':
         savename = savename.split('.')[0] + '.xlsx'
@@ -984,7 +991,6 @@ def save_rawExcel(dout, file, savePath):
     savename = _actualFileName(savePath=savePath, file=file, clabel='output', rlabel='run')
 
     # actually saving DataFrame to excel
-    print('savename', 975, savename)
     writer = pd.ExcelWriter(savename)
     for key in dout.keys():
         dout[key].to_excel(writer, sheet_name=key)
@@ -1016,6 +1022,16 @@ def closest_core(ls_core, core):
         else:
             core_select = min(ls_core, key=lambda x: abs(x - core))
     return core_select
+
+
+def removeGrpLabel(ls, grp_label, sep=' '):
+    lsnew = list()
+    for p in ls:
+        if grp_label in p:
+            lsnew.append(p.split(sep)[1])
+        else:
+            lsnew.append(p)
+    return lsnew
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -1200,6 +1216,7 @@ def _calcO2penetration(dO2_core, O2_pen, unit, steps, gmod, adv):
                 ls_pen.append(i)
         dfpen_core = pd.DataFrame([dcore_pen[core][l] for l in ls_pen], columns=['Depth / µm', 'O2_' + unit],
                                   index=[int(i.split('-')[0]) for i in ls_pen])
+
         dfpen_core.loc['mean'] = dfpen_core.mean()
         dfpen_core.loc['std'] = dfpen_core.std()
 
@@ -1212,11 +1229,15 @@ def penetration_depth(df, unit, steps, model, adv):
     xdata = df.index
     ydata = df['O2_' + unit]
 
+    # baseline correction
+    ydata = ydata - ydata.loc[xdata[-3:]].mean()
+
     # initial parameters
     if adv is True:
         para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=-.0001, c=0.002,
                                  d=-int(ydata.loc[xdata[-3:]].mean()))
     else:
+        model = Model(_gompertz_curve)
         para = model.make_params(a=-int(ydata.loc[xdata[:3]].mean()), b=-.0001, c=0.002)
     res = model.fit(ydata.to_numpy(), para, x=xdata)
 

@@ -65,7 +65,7 @@ dobj_hidEP, scaleEP = dict(), dict()
 
 # wizard architecture - how are the pages arranged?
 wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "epPage": 4, "charPage": 5, "averageLP": 6,
-                     "O2 flux": 7, "EP stats": 8, "joint plots": 9, "final page": 10}
+                    "joint plots": 7, "final page": 8}
 
 
 # !!! TODO: clean hidden code and unnecessary functions
@@ -1022,11 +1022,11 @@ class o2Page(QWizardPage):
                     self.save_figPen(save_path=save_path, dfigPen=dfigPen)
 
     def save(self):
-        global dout
+        global dout, dpen_glob
         # preparation - make own function out at the end
         dout = dbs.prep4saveRes(dout=dout, results=results, typeCalib=self.typeCalib, o2_dis=self.o2_dis,
                                 temperature=float(self.temperature_edit.text()), pene2=float(self.pene2_edit.text()),
-                                salinity=float(self.salinity_edit.text()))
+                                salinity=float(self.salinity_edit.text()), dpenStat=dpen_glob)
 
         # extract saving options for data / figures - according to user input
         self.save_data(analyte='O2')
@@ -1703,7 +1703,7 @@ def GUI_calcO2penetration(O2_pen, unit, steps, gmod):
         dic_pen, dfig_pen = dict(), dict()
         for s in dO2_core[core].keys():
             df_fit = dbs.penetration_depth(df=dO2_core[core][s[0]].dropna(), unit=unit, steps=steps, model=gmod,
-                                           adv=True)
+                                           adv=False)
             dic_pen[str(s[0]) + '-Fit'] = df_fit
             [fig, depth_pen] = dbs.plot_penetrationDepth(core=core, s=s[0], df_fit=df_fit, O2_pen=O2_pen, unit=unit,
                                                          show=False)
@@ -1719,11 +1719,13 @@ def GUI_calcO2penetration(O2_pen, unit, steps, gmod):
         [ls_pen.append(i) for i in dcore_pen[core].keys() if 'penetration' in i]
         dfpen_core = pd.DataFrame([dcore_pen[core][l] for l in ls_pen], columns=['Depth / µm', 'O2_' + unit],
                                   index=[int(i.split('-')[0]) for i in ls_pen])
-        dfpen_core.loc['mean'], dfpen_core.loc['std'] = dfpen_core.mean(), dfpen_core.std()
+        dfpen_core.loc['mean', 'Depth / µm'] = dfpen_core['Depth / µm'].mean()
+        dfpen_core.loc['std', 'Depth / µm'] = dfpen_core['Depth / µm'].std()
+        dfpen_core.loc['mean', 'O2_' + unit] = dfpen_core['O2_' + unit].mean()
+        dfpen_core.loc['std', 'O2_' + unit] = dfpen_core['O2_' + unit].std()
         dpenetration[core] = dfpen_core
 
     dpen_glob.update(pd.concat(dpenetration, axis=0))
-
     return dcore_pen, dcore_fig
 
 
@@ -3205,7 +3207,6 @@ class h2sPage(QWizardPage):
             # correction of manually selected baseline
             core_select = _findCoreLabel(option1=core_select, option2='core '+str(core_select), ls=list(data.keys()))
             for s in data[core_select].keys():
-                print(s)
                 # H2S correction
                 ynew = data[core_select][s].index - float(self.swih2s_edit.text())
                 data[core_select][s].index = ynew
@@ -3504,7 +3505,7 @@ class h2sPage(QWizardPage):
         self.sal_edit.setText('0.')
 
         # connect plot button to first part
-        self.continueh2s_button.disconnect()
+        #self.continueh2s_button.disconnect()
         self.continueh2s_button.clicked.connect(self.continue_H2S)
         self.continueh2s_button.setEnabled(True)
         self.adjusth2s_button.setEnabled(False)
@@ -3558,20 +3559,22 @@ def fig4saving_H2S(ls_core, draw, dadj, dsulFront=None):
                                      ls='-.', show=False, trimexact=False)[0]
     # adjusted data
     for c in ls_core:
-        s = list(dadj[c].keys())
-        dfigBase[c] = plot_H2SProfile(data_H2S=dadj, core=c, ls_core=ls_core, scale=None, col=dadj[c][s[0]].columns[-1],
+        cC = _findCoreLabel(option1=c, option2='core ' + str(c), ls=dadj)
+        s = list(dadj[cC].keys())
+        dfigBase[c] = plot_H2SProfile(data_H2S=dadj, core=c, ls_core=ls_core, scale=None, col=dadj[cC][s[0]].columns[-1],
                                       ls='-', show=False, dobj_hidH2S=dobj_hidH2S, trimexact=False)[0]
 
     # sulfidic front in adjusted profile
     if dsulFront:
         for c in ls_core:
-            s = list(dadj[c].keys())
-            df, ax = plot_H2SProfile(data_H2S=dadj, core=c, ls_core=ls_core, scale=None, col=dadj[c][s[0]].columns[-1],
+            cC = _findCoreLabel(option1=c, option2='core ' + str(c), ls=dadj)
+            s = list(dadj[cC].keys())
+            df, ax = plot_H2SProfile(data_H2S=dadj, core=c, ls_core=ls_core, scale=None, col=dadj[cC][s[0]].columns[-1],
                                      ls='-', show=False, dobj_hidH2S=dobj_hidH2S, trimexact=False)
-            ax.axhline(dsulFront[c].loc['mean'].values[0], color='crimson', lw=0.75, ls=':')
-            ax.fill_betweenx([dsulFront[c].loc['mean'].values[0] - dsulFront[c].loc['std'].values[0],
-                              dsulFront[c].loc['mean'].values[0] + dsulFront[c].loc['std'].values[0]], ax.get_xlim()[0],
-                             ax.get_xlim()[1], lw=0, alpha=0.5, color='grey')
+            ax.axhline(dsulFront[cC].loc['mean'].values[0], color='crimson', lw=0.75, ls=':')
+            ax.fill_betweenx([dsulFront[cC].loc['mean'].values[0] - dsulFront[cC].loc['std'].values[0],
+                              dsulFront[cC].loc['mean'].values[0] + dsulFront[cC].loc['std'].values[0]],
+                             ax.get_xlim()[0], ax.get_xlim()[1], lw=0, alpha=0.5, color='grey')
             dfigPen[c] = df
 
     return dfigRaw, dfigBase, dfigPen
@@ -4444,7 +4447,7 @@ class epPage(QWizardPage):
         # update instruction
         self.setSubTitle("The measurement data are plotted below.  If you want to adjust the profiles, press the "
                          "Adjustements button.  If the drift correction shall be applied in the next step, press the "
-                         "respective checkbox.")
+                         "respective checkbox. \n")
 
         # set status for process control and load data
         self.status_EP += 1
@@ -5524,62 +5527,33 @@ class charPage(QWizardPage):
     def __init__(self, parent=None):
         super(charPage, self).__init__(parent)
         self.setTitle("Further sediment characterization")
-        self.setSubTitle("Select how you want to pursue next.  In case you have more than one profile for a core,  "
-                         "select Average depth profiles.  Then,  you can choose to plot different parameters together"
+        self.setSubTitle("On the next slide, you will first select which profiles shall be used for averaging for an "
+                         "individual group,  e.g.  core. Then,  you can choose to plot different parameters together"
                          " in a joint plot. \n")
 
         # create layout
-        self.initUI()
-
-        # connect checkbox and load file button with a function
-        self.av_box.clicked.connect(self.nextStep_selection)
-        self.jointPlot_box.clicked.connect(self.nextStep_selection)
+        # self.initUI()
 
         # when all conditions are met, enable NEXT button
         self.ls_next = QLineEdit()
-        self.registerField("next steps*", self.ls_next)
 
-    def initUI(self):
-        # checkbox for subprojects
-        self.av_box = QCheckBox('Average depth profiles per core', self)
-        self.av_box.setFont(QFont('Helvetica Neue', 12))
-
-        self.jointPlot_box = QCheckBox('Joint plot of parameters', self)
-        self.jointPlot_box.setFont(QFont('Helvetica Neue', 12))
-
+    # def initUI(self):
         # creating window layout
-        w2 = QWidget()
-        mlayout2 = QVBoxLayout(w2)
-        vbox_top, vbox_middle, vbox_bottom = QHBoxLayout(), QHBoxLayout(), QHBoxLayout()
-        mlayout2.addLayout(vbox_top), mlayout2.addLayout(vbox_middle), mlayout2.addLayout(vbox_bottom)
-
-        para_settings = QGroupBox("Sediment analysis and output")
-        grid_set = QGridLayout()
-        para_settings.setFont(QFont('Helvetica Neue', 12))
-        vbox_middle.addWidget(para_settings)
-        para_settings.setFixedHeight(150)
-        para_settings.setLayout(grid_set)
-
-        # include widgets in the layout
-        grid_set.addWidget(self.av_box, 0, 0)
-        grid_set.addWidget(self.jointPlot_box, 1, 0)
-
-        self.setLayout(mlayout2)
-
-    def nextStep_selection(self):
-        ls_next = list()
-        if self.av_box.isChecked() is True:
-            ls_next.append('averageLP')
-        if self.jointPlot_box.isChecked() is True:
-            ls_next.append('joint plots')
-        self.ls_next.setText(','.join(ls_next))
+        # w2 = QWidget()
+        # mlayout2 = QVBoxLayout(w2)
+        # vbox_top, vbox_middle, vbox_bottom = QHBoxLayout(), QHBoxLayout(), QHBoxLayout()
+        # mlayout2.addLayout(vbox_top), mlayout2.addLayout(vbox_middle), mlayout2.addLayout(vbox_bottom)
+        #
+        # para_settings = QGroupBox("Sediment analysis and output")
+        # grid_set = QGridLayout()
+        # para_settings.setFont(QFont('Helvetica Neue', 12))
+        # vbox_middle.addWidget(para_settings)
+        # para_settings.setFixedHeight(150)
+        # para_settings.setLayout(grid_set)
+        # self.setLayout(mlayout2)
 
     def nextId(self) -> int:
-        ls_para = list(self.field('next steps').split(','))
-        if self.field('next steps'):
-            return wizard_page_index[ls_para[0]]
-        else:
-            return wizard_page_index["joint plots"]
+        return wizard_page_index["averageLP"]
 
 
 # -----------------------------------------------
@@ -5754,7 +5728,16 @@ class avProfilePage(QWizardPage):
     def averageRemains(self, analyte, col, k, dav_par, dav_):
         if len(dav_.keys()) > 1:
             df = pd.concat([dav_[i] for i in dav_.keys()], axis=1).astype(float)
-            dav_par[k] = df[self._specifyFilter(analyte=analyte)].mean(axis=1, skipna=True)
+            if self._specifyFilter(analyte=analyte) in df.keys():
+                dav_par[k] = df[self._specifyFilter(analyte=analyte)].mean(axis=1, skipna=True)
+            else:
+                if 'O2' in analyte:
+                    filter_ = 'O2_µmol/L'
+                elif 'H2S' in analyte:
+                    filter_ = 'total sulfide zero corr_µmol/L'
+                else:
+                    filter_ = None
+                dav_par[k] = df[filter_].mean(axis=1, skipna=True)
         else:
             dav_par[k] = pd.DataFrame(dav_[col])
         return dav_par
@@ -5859,13 +5842,7 @@ class avProfilePage(QWizardPage):
             self.tabula_EP.clearContents()
 
     def nextId(self) -> int:
-        ls_para = list(self.field('next steps').split(','))
-        # remove already visited pages
-        ls_para.remove("averageLP")
-        if len(ls_para) >= 1:
-            return wizard_page_index[ls_para[0]]
-        else:
-            return wizard_page_index['final page']
+        return wizard_page_index['joint plots']
 
 
 # -----------------------------------------------
@@ -6030,22 +6007,19 @@ class jointPlotPage(QWizardPage):
         em = 0
         for en, para in enumerate(self.ls_jPlot):
             em += en
-            self.sld_label.setText('{}: {}'.format(grp_label, tabcorr[self.ls_jPlot[0]].to_numpy()))
+            self.sld_label.setText('{}: {}'.format(grp_label, tabcorr[self.ls_jPlot[0]].to_numpy()[0]))
             # !!! Make sure the counting / parameter to axes arrangement is correct - it isn't right now (en)
-            print(para)
             pkeys = tabcorr[para].to_numpy()
-            print(dav[para][pkeys[sval]].min(), dav[para][pkeys[sval]].max())
+            colK = _findCoreLabel(option1=pkeys[sval], option2='core {}'.format(pkeys[sval]), ls=list(dav[para].keys()))
+
             if para == 'H2S':
-                ls_axes[en+1].plot(dav[para][pkeys[sval]].values, dav[para][pkeys[sval]].index, lw=0., marker='.',
-                                 color=ls_col[em])
+                ls_axes[en+1].plot(dav[para][colK].values, dav[para][colK].index, lw=0., marker='.', color=ls_col[em])
                 ls_axes[en+1].xaxis.label.set_color(ls_col[em])
             elif para == 'EP':
-                ls_axes[en-1].plot(dav[para][pkeys[sval]].values, dav[para][pkeys[sval]].index, lw=0., marker='.',
-                                 color=ls_col[em])
+                ls_axes[en-1].plot(dav[para][colK].values, dav[para][colK].index, lw=0., marker='.', color=ls_col[em])
                 ls_axes[en-1].xaxis.label.set_color(ls_col[em])
             else:
-                ls_axes[en].plot(dav[para][pkeys[sval]].values, dav[para][pkeys[sval]].index, lw=0., marker='.',
-                                 color=ls_col[em])
+                ls_axes[en].plot(dav[para][colK].values, dav[para][colK].index, lw=0., marker='.', color=ls_col[em])
                 ls_axes[en].xaxis.label.set_color(ls_col[em])
 
             ls_axes[en].axhline(0, color='k', lw=0.5)
@@ -6184,6 +6158,13 @@ class specGroup(QDialog):
         para2 = sorted([str(s) for s in self.lsCore2]) if isinstance(self.lsCore2, list) else ['--']
         para3 = sorted([str(s) for s in self.lsCore3]) if isinstance(self.lsCore3, list) else ['--']
         para4 = sorted([str(s) for s in self.lsCore4]) if isinstance(self.lsCore4, list) else ['--']
+
+        # change the para options and remove any group label information
+        global grp_label
+        para1 = dbs.removeGrpLabel(ls=para1, grp_label=grp_label, sep=' ')
+        para2 = dbs.removeGrpLabel(ls=para2, grp_label=grp_label, sep=' ')
+        para3 = dbs.removeGrpLabel(ls=para3, grp_label=grp_label, sep=' ')
+        para4 = dbs.removeGrpLabel(ls=para4, grp_label=grp_label, sep=' ')
 
         # fill table items with combo boxes
         for index in range(rows):
