@@ -16,7 +16,7 @@ from PyQt5 import QtGui
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                              QLineEdit, QDialog, QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget, QWizard,
                              QWizardPage, QTabWidget, QTableWidget, QTableWidgetItem)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QRegExp
 from PyQt5.QtGui import *
 import numpy as np
 import seaborn as sns
@@ -40,9 +40,10 @@ ls_allData = ['meta data', 'raw data', 'fit_mV', 'adjusted data', 'penetration d
 grp_label = None                    # global definition of group label
 
 # color list for samples: grey, orange, petrol, green, yellow, light grey, blue
-ls_col = list(['#4c5558', '#eb9032', '#21a0a8', '#f9d220', '#9ec759', '#96a6ab', '#1B08AA', '#40A64A', '#D20D41',
-               '#E87392'])
-ls_figtype = ['png']
+ls_col = list(['#4c5558', '#eb9032', '#3D14E1', '#21a0a8', '#D20D41', '#f9d220', '#9ec759',
+               '#96a6ab', '#E87392', '#40A64A'])
+ls_figtype = ['png'
+              '']
 dpi = 300
 fs_font, fs_ = 10, 10
 
@@ -5709,7 +5710,7 @@ class avProfilePage(QWizardPage):
         return dcore
 
     def _fill_tabula(self, dcore, tabula_par):
-        # get number of columns in table
+        # get number of rows in table
         new_row = tabula_par.rowCount()
         x0 = new_row - 1
         # check whether this (last) row is empty
@@ -6042,7 +6043,7 @@ class jointPlotPage(QWizardPage):
     def adjust_profile(self):
         print('make trimming of yaxis and xaxis scaling for individual parameter possible')
         global wAdj_jP
-        wAdj_jP = AdjustjPWindow()
+        wAdj_jP = AdjustjPWindow(self.slider.value())
         if wAdj_jP.isVisible():
             pass
         else:
@@ -6062,12 +6063,12 @@ class jointPlotPage(QWizardPage):
     def plot_joProfile(self):
         global tabcorr
         # slider initialized to first core
-        self.slider.setMinimum(0), self.slider.setMaximum(int(len(tabcorr.index)-1))
-        self.slider.setValue(0)
-        self.sld_label.setText('group: {}'.format(0))
+        self.slider.setMinimum(1), self.slider.setMaximum(int(len(tabcorr.index)))
+        self.slider.setValue(1)
+        self.sld_label.setText('group: {}'.format(1))
 
         # plot initial joint plot for group 0
-        self._plot_joProfile1Core(sval=self.slider.value())
+        self._plot_joProfile1Core(sval=self.slider.value()-1)
 
         # when slider value change (on click), return new value and update figure plot
         self.slider.valueChanged.connect(self.slider_update)
@@ -6109,7 +6110,7 @@ class jointPlotPage(QWizardPage):
             else:
                 ls_axes[en].plot(dav[para][colK].values, dav[para][colK].index, lw=0.75, color=ls_col[em])
                 ls_axes[en].xaxis.label.set_color(ls_col[em]), ls_axes[en].tick_params(axis='x', colors=ls_col[em])
-
+            print('color', em, ls_col[em])
             ls_axes[en].axhline(0, color='k', lw=0.5)
 
         # make it a pretty layout
@@ -6305,25 +6306,156 @@ class specGroup(QDialog):
 
 
 class AdjustjPWindow(QDialog):
-    def __init__(self):
+    def __init__(self, group):
         super().__init__()
+        self.group = group
         self.initUI()
+
+        # connect checkbox and load file button with a function
+        self.close_button.clicked.connect(self.close)
+        self.show_button.clicked.connect(self.showPlots)
+        self.adjust_button.clicked.connect(self.applyTrimming)
 
     def initUI(self):
         self.setWindowTitle("Adjust individual profiles")
-        self.setGeometry(650, 50, 600, 300) # x-position, y-position, width, height
+        self.setGeometry(650, 50, 600, 600) # x-position, y-position, width, height
 
         # add description about how to use this window (slider, outlier detection, cropping area)
         self.msg = QLabel("Use the tab to switch between analytes belonging to the selected group. \nYou can trim the "
                           "data range: press CONTROL/COMMAND + select min/max or you can adjust the general depth shown"
                           "in the plot. \nAt the end,  update the plot by pressing the button UPDATE")
-
         self.msg.setWordWrap(True)
 
-        self.close_button = QPushButton('Fit OK', self)
+        self.close_button = QPushButton('Close', self)
         self.close_button.setFixedWidth(100)
-        self.adjust_button = QPushButton('adjust data', self)
+        self.show_button = QPushButton('Show Data', self)
+        self.show_button.setFixedWidth(100)
+        self.adjust_button = QPushButton('Adjust Data', self)
         self.adjust_button.setFixedWidth(100)
+
+        self.range_label, self.range_unit_label = QLabel(self), QLabel(self)
+        self.range_label.setText('analyte range'), self.range_unit_label.setText('µmol/L')
+        self.range_edit = QLineEdit(self)
+        validator = QRegExpValidator(QRegExp("[0-9\.]{0,3}[\s?\-]{0,3}[0-9\.]{0,3}"))
+        self.range_edit.setValidator(validator)
+        # self.range_edit.setValidator(QDoubleValidator()), \
+        self.range_edit.setAlignment(Qt.AlignRight)
+        self.range_edit.setMaximumWidth(100), self.range_edit.setText('--')
+
+        self.figT_O2, self.figT_pH = self.Figula(analyte='O2'), self.Figula(analyte='pH')
+        self.figT_H2S, self.figT_EP = self.Figula(analyte='H2S'), self.Figula(analyte='EP')
+
+        # creating window layout
+        w = QWidget()
+        mlayout2 = QVBoxLayout(w)
+        vbox_top, vboxR, vbox, vbox_bottom = QHBoxLayout(), QHBoxLayout(), QVBoxLayout(), QHBoxLayout()
+        mlayout2.addLayout(vbox_top), mlayout2.addLayout(vbox), mlayout2.addLayout(vboxR), mlayout2.addLayout(vbox_bottom)
+
+        # table of core / available sample profiles and a column to select the profiles to be averaged
+        self.tabs_1 = QTabWidget()
+        self.tab1_1, self.tab2_1, self.tab3_1, self.tab4_1 = QWidget(), QWidget(), QWidget(), QWidget()
+
+        # Add tabs
+        self.tabs_1.addTab(self.tab1_1, "O2")
+        self.tabs_1.addTab(self.tab2_1, "pH")
+        self.tabs_1.addTab(self.tab3_1, "H2S/total sulfide ΣS2")
+        self.tabs_1.addTab(self.tab4_1, "EP")
+
+        # Add tabs to widget
+        vbox_top.addWidget(self.tabs_1)
+        # add tables to respective tab
+        self.O2vbox = QVBoxLayout(self.tab1_1)
+        self.O2vbox.addWidget(self.figT_O2[2])
+        self.O2vbox.addWidget(self.figT_O2[3])
+        self.pHvbox = QVBoxLayout(self.tab2_1)
+        self.pHvbox.addWidget(self.figT_pH[2])
+        self.pHvbox.addWidget(self.figT_pH[3])
+        self.H2Svbox = QVBoxLayout(self.tab3_1)
+        self.H2Svbox.addWidget(self.figT_H2S[2])
+        self.H2Svbox.addWidget(self.figT_H2S[3])
+        self.EPvbox = QVBoxLayout(self.tab4_1)
+        self.EPvbox.addWidget(self.figT_EP[2])
+        self.EPvbox.addWidget(self.figT_EP[3])
+
+        # draw additional "line" to separate parameters from plots and to separate navigation from rest
+        vline = QFrame()
+        vline.setFrameShape(QFrame.HLine | QFrame.Raised)
+        vline.setLineWidth(2)
+        vbox.addWidget(vline)
+
+        # add update button to the layout
+        vboxR.addWidget(self.range_label)
+        vboxR.addWidget(self.range_edit)
+        vboxR.addWidget(self.range_unit_label)
+        vboxR.addWidget(self.show_button)
+        vboxR.addWidget(self.adjust_button)
+        vboxR.addWidget(self.close_button)
+
+        self.setLayout(mlayout2)
+
+    def Figula(self, analyte):
+        if analyte in ['O2', 'H2S']:
+            unit = 'µmol/L'
+        elif analyte == 'pH':
+            unit = None
+        else:
+            unit = 'mV'
+
+        fig, ax = plt.subplots(figsize=(3, 4))
+        canT = FigureCanvasQTAgg(fig)
+        naviT = NavigationToolbar2QT(canT, self)
+
+        ax.set_ylabel('Depth / µm'), ax.set_xlabel('{} / {}'.format(analyte, unit))
+        ax.invert_yaxis()
+        fig.subplots_adjust(bottom=0.2, right=0.95, top=0.95, left=0.15)
+        return fig, ax, canT, naviT
+
+    def showPlots(self):
+        global tabcorr
+        id = self.group - 1
+        if self.tabs_1.currentIndex() == 0:
+            # update analyte unit
+            self.range_unit_label.setText('µmol/L')
+            # plot respective curve for the given analyte in the actual group/core
+            self.figT_O2[1].plot(dav['O2'][tabcorr.loc[id, 'O2']].values, dav['O2'][tabcorr.loc[id, 'O2']].index,
+                                 lw=0.75, color=ls_col[0])
+            self.figT_O2[1].axhline(0, color='k', lw=0.5)
+            self.figT_O2[0].canvas.draw()
+        elif self.tabs_1.currentIndex() == 1:
+            # update analyte unit
+            self.range_unit_label.setText('')
+            # plot respective curve for the given analyte in the actual group/core
+            self.figT_pH[1].plot(dav['pH'][tabcorr.loc[id, 'pH']].values, dav['pH'][tabcorr.loc[id, 'pH']].index,
+                                 lw=0.75, color=ls_col[0])
+            self.figT_pH[1].axhline(0, color='k', lw=0.5)
+            self.figT_pH[0].canvas.draw()
+        elif self.tabs_1.currentIndex() == 2:
+            # update analyte unit
+            self.range_unit_label.setText('µmol/L')
+            # plot respective curve for the given analyte in the actual group/core
+            self.figT_H2S[1].plot(dav['H2S'][tabcorr.loc[id, 'H2S']].values, dav['H2S'][tabcorr.loc[id, 'H2S']].index,
+                                  lw=0.75, color=ls_col[0])
+            self.figT_H2S[1].axhline(0, color='k', lw=0.5)
+            self.figT_H2S[0].canvas.draw()
+        elif self.tabs_1.currentIndex() == 3:
+            # update analyte unit
+            self.range_unit_label.setText('mV')
+            # plot respective curve for the given analyte in the actual group/core
+            self.figT_EP[1].plot(dav['EP'][tabcorr.loc[id, 'EP']].values, dav['EP'][tabcorr.loc[id, 'EP']].index,
+                                 lw=0.75, color=ls_col[0])
+            self.figT_EP[1].axhline(0, color='k', lw=0.5)
+            self.figT_EP[0].canvas.draw()
+
+    def applyTrimming(self):
+        print('allow triming of individual parameter for a given group')
+        # first option - select the depth range
+
+        # second option - adjust the concentration range in the QLineEdit
+
+
+    def close(self):
+        # close the window
+        self.hide()
 
 
 # -----------------------------------------------
