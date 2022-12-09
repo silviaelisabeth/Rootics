@@ -8,6 +8,7 @@ This also allows for better reproducibility of the analysis.
 You might have seen the project on my webpage: silviazieger.com
 
 Depending on your operating system, I provide two different version - one optimized for windows and on eoptimized for macOS.
+In both cases, please do not forget to download the pictures folder containing graphics for your GUI. In case you encounter any issues and the icon/pciture is not displayed in the task bar of the GUI, please make sure that the path in Rootics.py is up to date and directs to this folder.
 
 #### -------------------------------------------------------------------
 
