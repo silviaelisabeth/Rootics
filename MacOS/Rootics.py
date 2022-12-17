@@ -83,6 +83,7 @@ dobj_hidEP, scaleEP = dict(), dict()
 wizard_page_index = {"IntroPage": 0, "o2Page": 1, "phPage": 2, "h2sPage": 3, "epPage": 4, "charPage": 5, "averageLP": 6,
                      "joint plots": 7, "final page": 8}
 ls_para_global = ['O2', 'pH', 'H2S', 'EP']
+loc_path = os.getcwd()
 
 
 class QIComboBox(QComboBox):
@@ -124,7 +125,7 @@ class MagicWizard(QWizard):
         self.setOptions(QtWidgets.QWizard.NoCancelButtonOnLastPage | QtWidgets.QWizard.HaveFinishButtonOnEarlyPages)
 
         # add a background image
-        path = os.path.join('/pictures/', 'logo_v1.png')
+        path = os.path.join(loc_path + '/pictures/', 'logo_v1.png')
         pixmap = QtGui.QPixmap(path)
         pixmap = pixmap.scaled(400, 400, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         self.setPixmap(QWizard.BackgroundPixmap, pixmap)
@@ -5149,10 +5150,9 @@ class AdjustjPWindow(QDialog):
         self.figTab.canvas.draw()
 
         # close the window
-        self.hide()
+        self.hide()# ---------------------------------------------------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------------------------------------------------
 class FinalPage(QWizardPage):
     def __init__(self, parent=None):
         super(FinalPage, self).__init__(parent)
@@ -5316,7 +5316,7 @@ if __name__ == '__main__':
     import sys
 
     app = QtWidgets.QApplication(sys.argv)
-    path = os.path.join('/pictures/', 'Rootics.png')
+    path = os.path.join(loc_path + '/pictures/', 'Rootics.png')
     app.setWindowIcon(QIcon(path))
     app.setStyle('QtCurve') # options: 'Breeze', 'Oxygen', 'QtCurve', 'Windows', 'Fusion'
     app.setStyleSheet("QLineEdit { qproperty-frame: false }")
@@ -5326,7 +5326,6 @@ if __name__ == '__main__':
     screen = app.primaryScreen()
     rect = screen.availableGeometry()
     Wizard.setMaximumHeight(int(rect.height() * 0.9))
-    #Wizard.move(int(rect.width()*0.1), int(rect.height()*0.1))
 
     # show wizard
     Wizard.show()
