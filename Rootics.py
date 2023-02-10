@@ -56,7 +56,7 @@ ls_col = list(['#4c5558', '#eb9032', '#21a0a8', '#9ec759', '#f9d220', '#96a6ab',
 dcolor = dict({'O2': '#4c5558', 'pH': '#eb9032', 'H2S': '#9ec759', 'EP': '#1B08AA'})
 ls_figtype = ['png', 'tiff']
 dpi = 300
-font, font_button, fs_font, fs_, fs_intro = 'Arimo', 'Helvetica Neue', 10, 8, 11
+font, font_button, fs_font, fs_, fs_intro = 'Arimo', 'Helvetica Neue', 10, 8, 12
 
 # plot style / layout
 sns.set_context('paper'), sns.set_style('ticks')
@@ -125,7 +125,7 @@ class MagicWizard(QWizard):
         self.setOptions(QtWidgets.QWizard.NoCancelButtonOnLastPage | QtWidgets.QWizard.HaveFinishButtonOnEarlyPages)
 
         # add a background image
-        path = os.path.join(loc_path + '/pictures/', 'logo_v1.png')
+        path = os.path.join(loc_path, 'logo.png')
         pixmap = QtGui.QPixmap(path)
         pixmap = pixmap.scaled(400, 400, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         self.setPixmap(QWizard.BackgroundPixmap, pixmap)
@@ -5317,7 +5317,7 @@ if __name__ == '__main__':
     import sys
 
     app = QtWidgets.QApplication(sys.argv)
-    path = os.path.join(loc_path + '/pictures/', 'Rootics.png')
+    path = os.path.join(loc_path, 'Rootics.png')
     app.setWindowIcon(QIcon(path))
     app.setStyle('QtCurve') # options: 'Breeze', 'Oxygen', 'QtCurve', 'Windows', 'Fusion'
     app.setStyleSheet("QLineEdit { qproperty-frame: false }")
