@@ -1,45 +1,219 @@
-# Rootics · Graphical User Interface (GUI) for Semi-Automated Data Preparation For Electrochemical Micro-Sensors
+# Rootics
 
-This is a graphical user interface (GUI) for improved handling of sediment profiles measured by electrochemical microsensors from Unisense.  
-To speed up the often tedious and repetitive tasks of data analysis, I developed a graphical user interface to assist the user. 
-This also allows for better reproducibility of the analysis.
-So far, the GUI includes O2, pH, H2S (or total sulfide), and EP sensor profiles. Based on the sensor output file, all sediment profiles belonging to the same group are identified and plotted together. Rootics automatically determines the sediment-water interface for O2 profiles based on the point of inflection. Additionally, a sensor drift correction is included for EP sensors based either a linear regression or a 2nd order polynomial fit. The user can manually mark outlier or trim the data to the range of interest.
+<table>
+<tr>
+<td width="70%">
 
-Depending on your operating system, I provide two different version - one optimized for windows and on eoptimized for macOS.
-In both cases, please do not forget to download the pictures folder containing graphics for your GUI. In case you encounter any issues and the icon/pciture is not displayed in the task bar of the GUI, please make sure that the path in Rootics.py is up to date and directs to this folder.
+**Semi-Automated Data Analysis for Electrochemical Microsensors**
 
-----
+A graphical user interface (GUI) designed to streamline the analysis of sediment profiles measured by Unisense electrochemical microsensors. Rootics automates repetitive data preparation tasks, improves reproducibility, and enables efficient comparison of multiple profiles.
 
-#### SOFTWARE FEATURES
-Regarding the software features and requirements: 
-- **REQUIREMENT**     
-Software versions for both operating systems, macOS (version 13+) and Windows (version 11+), are made available here on GitHub. However, due to the size limitations on GitHub, I cannot upload the packed software. If you are anyways interested in the installation file, please reach out via info@silviazieger.com
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)]()
 
-- **FUNCTIONALITY**   
-Support for management and automation of data analysis steps for electrochemical (micro-) sensors. The software enables multiple profile data from different biological key parameters to be analyzed and visualized together, enabling direct comparison of results. Potential parameters processed by the software are:
-   - Dissolved oxygen O2
-   - pH value
-   - Hydrogen sulfide H2S and/or total sulfide
-   - Electrochemical potential EP
+</td>
+<td width="30%">
+   
+<img width="5090" height="5383" alt="logo_v3" src="https://github.com/user-attachments/assets/e472c446-ecf5-48ae-bdaa-4a072a142a3d" />
 
-- **EFFICIENCY**
-The software has been tested by researchers and compared to their usual analysis procedure. 
+</td>
+</tr>
+</table>
 
-- **RELIABILITY**     
-The main purpose of the software is to analyze multiple sensor profiles together and directly compare different key parameters. In this way, environmental mapping in a larger area or over a longer period becomes easier and more efficient.
 
-- **USABILITY**       
-The software is designed to guide the user through all necessary analysis steps. Accordingly, the user should understand the underlying  theory to decide whether the results can be considered reasonable or whether adjustments are required. However, no special knowledge is required to operate the software itself.
+## Key Features
 
-- **MAINTAINABILITY** 
-In case of any bugs reported by the user, I will update the code scripts and provide an updated version on GitHub.
+- **Multi-Parameter Support**: Analyze O₂, pH, H₂S (total sulfide), and EP sensor profiles
+- **Automated Interface Detection**: Automatic identification of sediment-water interface based on O₂ inflection points
+- **Sensor Drift Correction**: Built-in correction for EP sensors using linear or 2nd-order polynomial fitting
+- **Batch Processing**: Analyze multiple profiles from the same group simultaneously
+- **Manual Quality Control**: Mark outliers and trim data to regions of interest
+- **Enhanced Reproducibility**: Standardized workflows ensure consistent analysis across datasets
 
-----
 
-#### LEGAL DISCLAIMER
+## Prerequisites
+
+### System Requirements
+- **Windows**: Version 11 or higher
+- **macOS**: Version 13 (Ventura) or higher
+
+### Knowledge Requirements
+- Basic understanding of electrochemical microsensor theory
+- Familiarity with sediment biogeochemistry (recommended)
+- No programming knowledge required
+
+
+
+## Installation
+
+### Option 1: Run from Source (Recommended for Developers)
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/rootics.git
+   cd rootics
+   ```
+
+2. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Download the pictures folder**
+   - Ensure the `pictures/` folder is in the same directory as `Rootics.py`
+   - If icons don't display, verify the path in `Rootics.py` points to this folder
+
+4. **Run the application**
+   ```bash
+   python Rootics.py
+   ```
+
+### Option 2: Standalone Executable
+
+Due to GitHub's file size limitations, the packaged executables are not available for direct download. 
+
+**Request installation files**: Contact [info@silviazieger.com](mailto:info@silviazieger.com) for:
+- Windows installer (.exe)
+- macOS application bundle (.app)
+
+---
+
+## Quick Start Guide
+
+### 1. Launch Rootics
+- **Windows**: Double-click `Rootics.exe` or run `python Rootics.py`
+- **macOS**: Open `Rootics.app` or run `python Rootics.py`
+
+### 2. Load Your Data
+- Import Unisense sensor output files
+- Rootics automatically groups profiles from the same measurement session
+
+### 3. Configure Analysis
+- Select sensor type (O₂, pH, H₂S, EP)
+- Choose analysis parameters:
+  - Interface detection method (for O₂)
+  - Drift correction type (for EP: linear or polynomial)
+
+### 4. Quality Control
+- Review automated interface detection
+- Mark outliers manually if needed
+- Trim data to depth range of interest
+
+### 5. Export Results
+- Save processed profiles
+- Export figures for publication
+- Generate summary statistics
+
+---
+
+## Supported Sensors
+The software is generally made for electrochemical sensors from Unisense 
+
+| Sensor Type | Parameters Measured | Automated Features |
+|-------------|---------------------|-------------------|
+| **O₂** | Dissolved oxygen concentration | Automatic interface detection via inflection point |
+| **pH** | pH value | Profile grouping and visualization |
+| **H₂S** | Hydrogen sulfide / Total sulfide | Profile grouping and visualization |
+| **EP** | Redox potential | Linear or polynomial drift correction |
+
+---
+
+## Troubleshooting
+
+### Icons/Pictures Not Displaying
+**Problem**: GUI shows missing icons or blank image areas
+
+**Solution**: 
+1. Verify the `pictures/` folder is in the same directory as `Rootics.py`
+2. Open `Rootics.py` and check the path variable (usually near the top of the file)
+3. Update the path to point to your `pictures/` folder location
+
+```python
+# Example path correction in Rootics.py
+PICTURES_PATH = os.path.join(os.path.dirname(__file__), 'pictures')
+```
+
+### Import Errors
+**Problem**: Missing Python packages when running from source
+
+**Solution**: Install all dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Data Not Loading
+**Problem**: Sensor files not recognized
+
+**Solution**: 
+- Ensure files are in Unisense output format
+- Check file extensions match expected format (.txt, .csv)
+- Verify files are not corrupted
+
+---
+
+## Documentation
+
+Please reach out for detailed information about:
+- Data file formats and specifications
+- Analysis algorithms and methodologies  
+- Advanced configuration options
+- Example workflows and use cases
+
+---
+
+## Contributing
+
+Contributions, bug reports, and feature requests are welcome!
+
+1. **Report bugs**: Open an issue with detailed description and steps to reproduce
+2. **Request features**: Describe your use case and proposed functionality
+3. **Submit code**: Fork the repository and submit a pull request
+
+---
+
+## License
+
 Copyright © 2021 Silvia E. Zieger. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal 
-in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-The above copyright notice and the permission notice included in the software header shall be included in all copies or substantial portions of the Software.
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+**THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND**, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+## Contact & Support
+
+**Developer**: Silvia E. Zieger  
+**Email**: [info@silviazieger.com](mailto:info@silviazieger.com)  
+**Issues**: [GitHub Issues](../../issues)
+
+---
+
+## Acknowledgments
+
+- Unisense A/S for microsensor technology
+- Research collaborators who tested and provided feedback
+- The scientific community for valuable input on feature development
+
+---
+
+## Citation
+
+If you use Rootics in your research, please cite:
+
+```bibtex
+@software{rootics2021,
+  author = {Zieger, Silvia E.},
+  title = {Rootics: GUI for Semi-Automated Data Preparation for Electrochemical Microsensors},
+  year = {2021},
+  url = {https://github.com/yourusername/rootics}
+}
+```
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ for the marine biogeochemistry community</sub>
+</p>
