@@ -1,4 +1,4 @@
-# Rootics – graphical user interface (GUI) for better handling of environmental profiling (microsensors)
+# Rootics · Graphical User Interface (GUI) for Semi-Automated Data Preparation For Electrochemical Micro-Sensors
 
 This is a graphical user interface (GUI) for improved handling of sediment profiles measured by electrochemical microsensors from Unisense.  
 To speed up the often tedious and repetitive tasks of data analysis, I developed a graphical user interface to assist the user. 
