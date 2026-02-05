@@ -8,7 +8,7 @@
 
 A graphical user interface (GUI) designed to streamline the analysis of sediment profiles measured by Unisense electrochemical microsensors. Rootics automates repetitive data preparation tasks, improves reproducibility, and enables efficient comparison of multiple profiles.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![License: CC BY‑NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)]()
 
 </td>
