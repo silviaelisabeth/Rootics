@@ -212,6 +212,15 @@ If you use Rootics in your research, please cite:
 }
 ```
 
+
+---
+
+## License
+Copyright © 2023–2026<br>
+SilviaE. Zieger<br><br>
+This software is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).<br>
+See the LICENSE file for full license text.
+
 ---
 
 <p align="center">
